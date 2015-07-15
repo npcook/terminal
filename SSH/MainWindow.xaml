@@ -1,0 +1,16 @@
+﻿<Window x:Class="SSH.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SSH"
+        xmlns:term="clr-namespace:TerminalControls;assembly=TerminalControls"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="350" Width="525" FocusManager.FocusedElement="{ Binding ElementName=terminalControl }" GotKeyboardFocus="OnKeyboardFocus">
+    <Grid>
+        <ScrollViewer Focusable="False">
+            <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13.333" Background="Black" VerticalAlignment="Top">
+            </term:TerminalControl>
+        </ScrollViewer>
+    </Grid>
+</Window>
