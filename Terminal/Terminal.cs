@@ -146,7 +146,7 @@ namespace Terminal
 				lineEnd = Math.Min(lineEnd, Size.Col - CursorPos.Col);
 
 				screen[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
-				if (advanceCursor)
+				if (advanceCursor && !font.Hidden)
 					cursorCol += lineEnd - textIndex;
 				textIndex = lineEnd;
 

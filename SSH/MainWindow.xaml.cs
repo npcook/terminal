@@ -63,7 +63,7 @@ namespace SSH
 				SshClient client = new SshClient(connectionInfo);
 				client.Connect();
 
-				stream = client.CreateShellStream("xterm", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
+				stream = client.CreateShellStream("xterm-256color", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
 				writer = new BinaryWriter(stream, Encoding.UTF8);
 				var reader = new StreamReader(stream, Encoding.UTF8, false, 2048, true);
 

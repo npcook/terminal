@@ -11,12 +11,14 @@ using Terminal;
 namespace TerminalControls
 {
 	class TerminalLineVisual : DrawingVisual
-	{		
+	{
+		// The <c>TerminalControl</c> this visual is a child of	
 		public TerminalControl Terminal
-		{ get; private set; }
+		{ get; }
 
+		// The line this visual represents
 		public TerminalLine Line
-		{ get; private set; }
+		{ get; }
 
 		public TerminalLineVisual(TerminalControl terminal, TerminalLine line)
 		{
@@ -28,6 +30,7 @@ namespace TerminalControls
 
 		private void Line_RunsChanged(object sender, EventArgs e)
 		{
+			// Redraw all this line's runs
 			Action action = () => Dispatcher.Invoke(redraw);
 			if (Terminal.DeferChanges)
 				Terminal.AddDeferChangesCallback(this, action);
@@ -44,7 +47,7 @@ namespace TerminalControls
 
 			var drawPoint = new System.Windows.Point(0, 0);
 			foreach (var run in Line.Runs)
-			{
+			{			
 				var ft = new FormattedText(
 					run.Text,
 					System.Globalization.CultureInfo.CurrentUICulture,

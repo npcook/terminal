@@ -20,6 +20,9 @@ using Color = Terminal.Color;
 
 namespace TerminalControls
 {
+	/// <summary>
+	/// Provides a visual representation of a <c>Terminal.Terminal</c>
+	/// </summary>
 	public class TerminalControl : FrameworkElement
 	{
 		public static readonly DependencyProperty FontFamilyProperty = DependencyProperty.Register("FontFamily", typeof(FontFamily), typeof(TerminalControl), new PropertyMetadata(new FontFamily("Consolas,Courier New"), FontFamilyChanged));
@@ -53,31 +56,39 @@ namespace TerminalControls
 			get { return (Brush) GetValue(BackgroundProperty); }
 			set { SetValue(FontFamilyProperty, value); }
 		}
-
-		List<TerminalLineVisual> lines = new List<TerminalLineVisual>();
-		DrawingVisual caret = null;
+		
+		// Visuals for the terminal screen (same size as number of rows)
+		readonly List<TerminalLineVisual> screen = new List<TerminalLineVisual>();
+		// Visual for the caret
+		readonly DrawingVisual caret;
+		// The terminal backing this visual representation
 		Terminal.Terminal terminal;
+		
 		public Terminal.Terminal Terminal
 		{
 			get { return terminal; }
 			set
 			{
+				if (terminal != null)
+				{
+					// Unregister events from the old terminal
+					terminal.CursorPosChanged -= Terminal_CursorPosChanged;
+					terminal.SizeChanged -= Terminal_SizeChanged;
+					terminal.LineShiftedUp -= Terminal_LineShiftedUp;
+				}
 				terminal = value;
 
-				ColCount = terminal.Size.Col;
-				RowCount = terminal.Size.Row;
-				CursorCol = terminal.CursorPos.Col;
-				CursorRow = terminal.CursorPos.Row;
-
-				foreach (var line in lines)
+				// Remove all lines from the visual tree and the screen
+				foreach (var line in screen)
 					RemoveVisualChild(line);
+				screen.Clear();
 
-				lines.Clear();
+				// Create new visuals for each line in the new terminal screen
 				foreach (var line in terminal.Screen)
 				{
 					var visual = new TerminalLineVisual(this, line);
-					visual.Offset = new Vector(0.0, lines.Count * CharHeight);
-					lines.Add(visual);
+					visual.Offset = new Vector(0.0, screen.Count * CharHeight);
+					screen.Add(visual);
 					AddVisualChild(visual);
 				}
 
@@ -87,31 +98,47 @@ namespace TerminalControls
 			}
 		}
 
+		public double CharWidth
+		{ get; private set; }
+
+		public double CharHeight
+		{ get; private set; }
+
+		public Typeface Typeface
+		{ get { return new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal); } }
+
+		public TerminalControl()
+		{
+			caret = new DrawingVisual();
+			AddVisualChild(caret);
+		}
+
 		private void Terminal_LineShiftedUp(object sender, LineShiftedUpEventArgs e)
 		{
 			Dispatcher.Invoke(() =>
 			{
 				int oldIndex = -1;
-				for (int i = 0; i < lines.Count; ++i)
+				for (int i = 0; i < screen.Count; ++i)
 				{
-					var visual = lines[i];
+					var visual = screen[i];
 					if (visual.Line == e.OldLine)
 						oldIndex = i;
 					else
 						visual.Offset = new Vector(0.0, (i - 1) * CharHeight);
 				}
-				RemoveVisualChild(lines[oldIndex]);
-				lines.RemoveAt(oldIndex);
+				RemoveVisualChild(screen[oldIndex]);
+				screen.RemoveAt(oldIndex);
 
 				var newVisual = new TerminalLineVisual(this, e.NewLine);
-				newVisual.Offset = new Vector(0.0, lines.Count * CharHeight);
-				lines.Add(newVisual);
+				newVisual.Offset = new Vector(0.0, screen.Count * CharHeight);
+				screen.Add(newVisual);
 				AddVisualChild(newVisual);
 			});
 		}
 
 		private void Terminal_CursorPosChanged(object sender, EventArgs e)
 		{
+			// Update the caret position
 			Action action = () => { Dispatcher.Invoke(updateCaret); };
 			if (DeferChanges)
 				AddDeferChangesCallback(this, action);
@@ -124,24 +151,20 @@ namespace TerminalControls
 
 		protected override Size MeasureOverride(Size availableSize)
 		{
+			// The size is based on the number of rows and columns in the terminal
 			return new Size(
 				Math.Min(availableSize.Width, CharWidth * terminal.Size.Col),
 				Math.Min(availableSize.Height, CharHeight * terminal.Size.Row));
 		}
-
-		double? cachedCharWidth = null;
-		double? cachedCharHeight = null;
+		
 		void updateCharDimensions()
 		{
 			var ft = new FormattedText("X", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface, FontSize, Brushes.Transparent);
-			cachedCharWidth = ft.Width;
-			cachedCharHeight = FontSize;
+			CharWidth = ft.Width;
+			CharHeight = FontSize;
 
-			if (caret == null)
-			{
-				caret = new DrawingVisual();
-				AddVisualChild(caret);
-			}
+			System.Diagnostics.Debug.Assert(CharWidth > 0 && CharHeight > 0);
+			
 			var context = caret.RenderOpen();
 
 			var caretPen = new Pen(Brushes.White, SystemParameters.CaretWidth);
@@ -150,68 +173,7 @@ namespace TerminalControls
 
 			context.Close();
 		}
-
-		void clearCharDimensionsCache()
-		{
-			cachedCharWidth = null;
-			cachedCharHeight = null;
-		}
-
-		public double CharWidth
-		{
-			get
-			{
-				if (!cachedCharWidth.HasValue)
-					updateCharDimensions();
-				return cachedCharWidth.Value;
-			}
-		}
-
-		public double CharHeight
-		{
-			get
-			{
-				if (!cachedCharHeight.HasValue)
-					updateCharDimensions();
-				return cachedCharHeight.Value;
-			}
-		}
-
-		public Typeface Typeface
-		{
-			get
-			{
-				return new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-			}
-		}
-
-		public int ColCount
-		{
-			get; set;
-		}
-
-		public int RowCount
-		{
-			get; set;
-		}
-
-		int cursorCol;
-		public int CursorCol
-		{
-			get { return cursorCol; }
-			internal set { cursorCol = value; }
-		}
-
-		int cursorRow;
-		public int CursorRow
-		{
-			get { return cursorRow; }
-			internal set { cursorRow = value; }
-		}
 		
-		public TerminalControl()
-		{ }
-
 		protected override void OnRender(DrawingContext drawingContext)
 		{
 			base.OnRender(drawingContext);
@@ -222,7 +184,7 @@ namespace TerminalControls
 		protected override int VisualChildrenCount
 		{
 			// Each line is a child, plus 1 for the caret
-			get { return lines.Count + 1; }
+			get { return screen.Count + 1; }
 		}
 
 		protected override Visual GetVisualChild(int index)
@@ -230,35 +192,33 @@ namespace TerminalControls
 			if (index < 0 || index >= VisualChildrenCount)
 				throw new ArgumentOutOfRangeException("index", index, "");
 
-			if (index < lines.Count)
-				return lines[index];
+			// Make sure the caret comes last so it gets drawn over the lines
+			if (index < screen.Count)
+				return screen[index];
 			else
 				return caret;
 		}
 
-		public void updateCaret()
+		void updateCaret()
 		{
+			// Add 0.5 to each dimension so the caret is aligned to pixels
 			if (caret != null)
 				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * terminal.CursorPos.Row) + 0.5);
 		}
 
+		// Bulk changes can be deferred to avoid redundantly updating visuals
 		internal bool DeferChanges
 		{ get; private set; }
 
 		Dictionary<object, Action> deferChangesCallbacks = new Dictionary<object, Action>();
-		public void AddDeferChangesCallback(object callee, Action callback)
-		{
-			if (!DeferChanges)
-				throw new InvalidOperationException("Must be deferring changes before a callback can be added");
 
-			deferChangesCallbacks[callee] = callback;
-		}
-
+		// Begin a group of changes
 		public void BeginChange()
 		{
 			DeferChanges = true;
 		}
 
+		// End a group of changes and update all visuals in one swoop
 		public void EndChange()
 		{
 			if (!DeferChanges)
@@ -268,6 +228,16 @@ namespace TerminalControls
 			foreach (var kvp in deferChangesCallbacks)
 				kvp.Value();
 			deferChangesCallbacks.Clear();
+		}
+
+		// Register a delegate to be called when changes should be applied.  If the same callee
+		// is passed multiple times, the last callback overwrites the previous callbacks
+		public void AddDeferChangesCallback(object callee, Action callback)
+		{
+			if (!DeferChanges)
+				throw new InvalidOperationException("Must be deferring changes before a callback can be added");
+
+			deferChangesCallbacks[callee] = callback;
 		}
 
 		Dictionary<Color, SolidColorBrush> brushCache = new Dictionary<Color, SolidColorBrush>();
