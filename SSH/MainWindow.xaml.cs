@@ -59,7 +59,8 @@ namespace SSH
 			
 			var dataThread = new Thread(() =>
 			{
-				ConnectionInfo connectionInfo = null;
+				var settings = File.ReadAllLines(@"X:\settings.txt");
+				var connectionInfo = new PrivateKeyConnectionInfo(settings[0], settings[1], new PrivateKeyFile(settings[2], settings[3]));
 				SshClient client = new SshClient(connectionInfo);
 				client.Connect();
 
