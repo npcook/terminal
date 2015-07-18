@@ -95,16 +95,33 @@ namespace SSH
 			{
 				Dispatcher.Invoke(() =>
 				{
+					// Convert to char array because BinaryWriter sends strings prefixed with their
+					// length
 					if (e.Key == Key.Left)
-						writer.Write("\x1b[D");
+						writer.Write("\x1b[D".ToCharArray());
 					else if (e.Key == Key.Right)
-						writer.Write("\x1b[C");
+						writer.Write("\x1b[C".ToCharArray());
 					else if (e.Key == Key.Up)
-						writer.Write("\x1b[A");
+						writer.Write("\x1b[A".ToCharArray());
 					else if (e.Key == Key.Down)
-						writer.Write("\x1b[B");
+						writer.Write("\x1b[B".ToCharArray());
 					else if (e.Key == Key.Delete)
-						writer.Write("\x1b[3~");
+						writer.Write("\x1b[3~".ToCharArray());
+					else if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+					{
+						if (e.Key >= Key.A && e.Key <= Key.Z)
+							writer.Write((byte) (e.Key - Key.A + 1));
+						else if (e.Key == Key.OemOpenBrackets)
+							writer.Write((byte) 27);
+						else if (e.Key == Key.Oem5)
+							writer.Write((byte) 28);
+						else if (e.Key == Key.OemCloseBrackets)
+							writer.Write((byte) 29);
+						else if (e.Key == Key.D6 && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+							writer.Write((byte) 30);
+						else if (e.Key == Key.OemMinus && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+							writer.Write((byte) 31);
+					}
 					writer.Flush();
 				});
 			};
