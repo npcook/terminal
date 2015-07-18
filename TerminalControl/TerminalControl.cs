@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -59,10 +60,12 @@ namespace TerminalControls
 		
 		// Visuals for the terminal screen (same size as number of rows)
 		readonly List<TerminalLineVisual> screen = new List<TerminalLineVisual>();
+		// The terminal backing this visual representation
+		Terminal.Terminal terminal = null;
 		// Visual for the caret
 		readonly DrawingVisual caret;
-		// The terminal backing this visual representation
-		Terminal.Terminal terminal;
+		// Timer for blinking the caret
+		Timer caretTimer;
 		
 		public Terminal.Terminal Terminal
 		{
@@ -104,13 +107,27 @@ namespace TerminalControls
 		public double CharHeight
 		{ get; private set; }
 
-		public Typeface Typeface
-		{ get { return new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal); } }
-
 		public TerminalControl()
 		{
 			caret = new DrawingVisual();
 			AddVisualChild(caret);
+
+			uint caretBlinkTime = NativeMethods.GetCaretBlinkTime();
+			caretTimer = new Timer(_ => Dispatcher.Invoke(() => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0)), null, caretBlinkTime, caretBlinkTime);
+		}
+
+		public Typeface GetFontTypeface(TerminalFont? font)
+		{
+			if (font.HasValue)
+			{
+				return new Typeface(
+					FontFamily,
+					font.Value.Italic ? FontStyles.Italic : FontStyles.Normal,
+					font.Value.Bold ? FontWeights.Bold : FontWeights.Normal,
+					FontStretches.Normal);
+			}
+			else
+				return new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 		}
 
 		private void Terminal_LineShiftedUp(object sender, LineShiftedUpEventArgs e)
@@ -151,22 +168,27 @@ namespace TerminalControls
 
 		protected override Size MeasureOverride(Size availableSize)
 		{
-			// The size is based on the number of rows and columns in the terminal
-			return new Size(
-				Math.Min(availableSize.Width, CharWidth * terminal.Size.Col),
-				Math.Min(availableSize.Height, CharHeight * terminal.Size.Row));
+			if (terminal != null)
+			{
+				// The size is based on the number of rows and columns in the terminal
+				return new Size(
+					Math.Min(availableSize.Width, CharWidth * terminal.Size.Col),
+					Math.Min(availableSize.Height, CharHeight * terminal.Size.Row));
+			}
+			else
+				return Size.Empty;
 		}
 		
 		void updateCharDimensions()
 		{
-			var ft = new FormattedText("X", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface, FontSize, Brushes.Transparent);
+			var ft = new FormattedText("X", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GetFontTypeface(null), FontSize, Brushes.Transparent);
 			CharWidth = ft.Width;
 			CharHeight = FontSize;
 
 			System.Diagnostics.Debug.Assert(CharWidth > 0 && CharHeight > 0);
-			
-			var context = caret.RenderOpen();
 
+			var context = caret.RenderOpen();
+			
 			var caretPen = new Pen(Brushes.White, SystemParameters.CaretWidth);
 			caretPen.Freeze();
 			context.DrawLine(caretPen, new System.Windows.Point(0.0, 0.0), new System.Windows.Point(0.0, CharHeight + 2));
@@ -202,7 +224,7 @@ namespace TerminalControls
 		void updateCaret()
 		{
 			// Add 0.5 to each dimension so the caret is aligned to pixels
-			if (caret != null)
+			if (terminal != null)
 				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * terminal.CursorPos.Row) + 0.5);
 		}
 

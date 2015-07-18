@@ -48,6 +48,8 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DebugColors.cs" />
+    <Compile Include="NativeMethods.cs" />
     <Compile Include="TerminalControl.cs">
       <SubType>Code</SubType>
     </Compile>

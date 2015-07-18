@@ -20,10 +20,16 @@ namespace TerminalControls
 		public TerminalLine Line
 		{ get; }
 
+		// Should boxes be drawn around every run?
+		internal bool DrawRunBoxes
+		{ get; set; }
+
 		public TerminalLineVisual(TerminalControl terminal, TerminalLine line)
 		{
 			this.Terminal = terminal;
 			this.Line = line;
+
+			DrawRunBoxes = false;
 
 			line.RunsChanged += Line_RunsChanged;
 		}
@@ -42,9 +48,9 @@ namespace TerminalControls
 		{
 			var context = RenderOpen();
 
-			var underlineDecoration = new TextDecorationCollection();
-			underlineDecoration.Add(TextDecorations.Underline);
+			var textDecorations = new TextDecorationCollection();
 
+			int index = 0;
 			var drawPoint = new System.Windows.Point(0, 0);
 			foreach (var run in Line.Runs)
 			{			
@@ -52,7 +58,7 @@ namespace TerminalControls
 					run.Text,
 					System.Globalization.CultureInfo.CurrentUICulture,
 					Terminal.FlowDirection,
-					Terminal.Typeface,
+					Terminal.GetFontTypeface(run.Font),
 					Terminal.FontSize,
 					Terminal.GetFontForegoundBrush(run.Font),
 					new NumberSubstitution(),
@@ -60,10 +66,25 @@ namespace TerminalControls
 					);
 
 				if (run.Font.Underline)
-					ft.SetTextDecorations(underlineDecoration);
+					textDecorations.Add(TextDecorations.Underline);
+				if (run.Font.Strike)
+					textDecorations.Add(TextDecorations.Strikethrough);
+
+				if (textDecorations.Count > 0)
+					ft.SetTextDecorations(textDecorations);
 
 				context.DrawText(ft, drawPoint);
+
+				if (DrawRunBoxes)
+				{
+					SolidColorBrush backgroundBrush = DebugColors.GetBrush(index);
+					context.DrawRoundedRectangle(null, new Pen(backgroundBrush, 1), new Rect(drawPoint, new Vector(ft.Width - 1, ft.Height)), 1, 1);
+				}
 				drawPoint.X += ft.WidthIncludingTrailingWhitespace;
+
+				textDecorations.Clear();
+
+				index++;
 			}
 
 			context.Close();
