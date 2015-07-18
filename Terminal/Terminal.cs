@@ -134,23 +134,25 @@ namespace Terminal
 
 		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)
 		{
+			bool ignoreNextLine = false;
 			int textIndex = 0;
 			while (textIndex < text.Length)
 			{
-				int lineEnd = text.IndexOfAny(new[] { '\r', '\n' }, textIndex);
+				int lineEnd = text.IndexOfAny(new[] { '\r', '\n' }, textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col));
 				bool controlFound = false;
 				if (lineEnd == -1)
 					lineEnd = text.Length;
 				else
 					controlFound = true;
-				lineEnd = Math.Min(lineEnd, Size.Col - CursorPos.Col);
+				lineEnd = textIndex + Math.Min(lineEnd - textIndex, Size.Col - CursorPos.Col);
 
 				screen[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
 				if (advanceCursor && !font.Hidden)
 					cursorCol += lineEnd - textIndex;
 				textIndex = lineEnd;
 
-				bool nextRow = (cursorCol == Size.Col);
+				bool endOfLine = (cursorCol == Size.Col);
+				bool nextRow = endOfLine;
 				if (controlFound)
 				{
 					if (text[textIndex] != '\r' && text[textIndex] != '\n')
@@ -164,9 +166,16 @@ namespace Terminal
 					else if (c == '\n')
 					{
 						textIndex++;
-						nextRow = true;
+						if (!ignoreNextLine)
+							nextRow = true;
+						ignoreNextLine = false;
 					}
 				}
+				else
+					ignoreNextLine = false;
+
+				if (endOfLine)
+					ignoreNextLine = true;
 
 				if (nextRow && advanceCursor)
 					advanceCursorRow();
