@@ -140,6 +140,19 @@ namespace Terminal
 				}
 				totalIndex += run.Text.Length;
 			}
+			
+			for (int i = 0; i < runs.Count - 1; ++i)
+			{
+				var run1 = runs[i];
+				var run2 = runs[i + 1];
+
+				if (run1.Font == run2.Font)
+				{
+					run1.Text += run2.Text;
+					runs.RemoveAt(i + 1);
+					i--;
+				}
+			}
 
 			if (RunsChanged != null)
 				RunsChanged(this, EventArgs.Empty);
