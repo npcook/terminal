@@ -40,6 +40,7 @@ namespace Terminal
 		StringBuilder runBuilder = new StringBuilder();
 		TerminalFont font;
 
+		Thread processingThread;
 		Queue<char> buffer = new Queue<char>();
 
 		TerminalFont defaultFont;
@@ -54,12 +55,18 @@ namespace Terminal
 		}
 
 		AutoResetEvent dataReceived = new AutoResetEvent(false);
+		AutoResetEvent dataProcessed = new AutoResetEvent(false);
 
 		public event EventHandler<TitleChangeEventArgs> TitleChanged;
 
 		public XtermTerminalHandler(Terminal terminal)
 		{
 			this.terminal = terminal;
+
+			processingThread = new Thread(handleInputCore);
+			processingThread.IsBackground = true;
+			processingThread.Name = "XtermTerminalHandler::handleInputCore";
+			processingThread.Start();
 		}
 
 		void endRun()
@@ -80,13 +87,21 @@ namespace Terminal
 			return arr[index].GetValueOrDefault(defaultValue);
 		}
 
-		static string readUntil(StreamReader reader, Predicate<char> untilPredicate)
+		char readOne()
+		{
+			if (buffer.Count > 0)
+				return buffer.Dequeue();
+			dataReceived.WaitOne();
+			return buffer.Dequeue();
+		}
+
+		string readUntil(Predicate<char> untilPredicate)
 		{
 			char c;
 			var builder = new StringBuilder();
 			do
 			{
-				c = (char) reader.Read();
+				c = readOne();
 				builder.Append(c);
 			} while (!untilPredicate(c));
 
@@ -100,25 +115,25 @@ namespace Terminal
 			else if (sgr == 1)
 				font.Bold = true;
 			else if (sgr == 2)
-				;//font.Faint = true
+				font.Faint = true;
 			else if (sgr == 3)
-				;//font.Italic = true
+				font.Italic = true;
 			else if (sgr == 4)
 				font.Underline = true;
 			else if (sgr == 8)
 				font.Hidden = true;
 			else if (sgr == 9)
-				;//font.Strike = true
+				font.Strike = true;
 			else if (sgr == 22)
 				font.Bold = false;
 			else if (sgr == 23)
-				;//font.Italic = false
+				font.Italic = false;
 			else if (sgr == 24)
 				font.Underline = false;
 			else if (sgr == 28)
 				font.Hidden = false;
 			else if (sgr == 29)
-				;//font.Strioke = false;
+				font.Strike = false;
 			else if (sgr >= 30 && sgr <= 37)
 				font.Foreground = TerminalColors.GetBasicColor(sgr - 30);
 			else if (sgr == 38 && codes[1] == 5)
@@ -136,13 +151,13 @@ namespace Terminal
 			return true;
 		}
 
-		bool handleCsi(StreamReader reader)
+		bool handleCsi()
 		{
 			bool handled = true;
 
 			endRun();
 
-			string sequence = readUntil(reader, ch => ch >= 64 && ch <= 126);
+			string sequence = readUntil(ch => ch >= 64 && ch <= 126);
 			bool extendedKind = sequence[0] == '?';
 			char kind = sequence.Last();
 			int?[] codes = null;
@@ -245,9 +260,9 @@ namespace Terminal
 			return handled;
 		}
 
-		bool handleOsc(StreamReader reader)
+		bool handleOsc()
 		{
-			string sequence = readUntil(reader, ch => ch == 7);
+			string sequence = readUntil(ch => ch == 7);
 			sequence = sequence.Substring(0, sequence.Length - 1);
 			int kind = int.Parse(sequence.Substring(0, sequence.IndexOf(';')));
 			switch (kind)
@@ -263,16 +278,18 @@ namespace Terminal
 			return true;
 		}
 
-		bool busy = false;
-		public void HandleInput(StreamReader reader)
+		void handleInputCore()
 		{
-			if (busy)
-				System.Diagnostics.Debugger.Break();
-			busy = true;
-
-			while (!reader.EndOfStream)
+			while (true)
 			{
-				char c = (char) reader.Read();
+				if (buffer.Count == 0)
+				{
+					endRun();
+					dataProcessed.Set();
+					dataReceived.WaitOne(TimeSpan.FromMilliseconds(500));
+				}
+
+				char c = readOne();
 				if (!char.IsControl(c) || c == '\r' || c == '\n')
 					runBuilder.Append(c);
 				else if (c != '\x1b')
@@ -291,28 +308,40 @@ namespace Terminal
 				{
 					bool handled = true;
 
-					char escapeKind = (char) reader.Read();
+					char escapeKind = readOne();
 					string sequence = "";
 					if (escapeKind == '[')
-						handled = handleCsi(reader);
+						handled = handleCsi();
 					else if (escapeKind == ']')
-						handled = handleOsc(reader);
+						handled = handleOsc();
 					else if (escapeKind == '(')
 					{
-						sequence = new string((char) reader.Read(), 1);
+						sequence = new string((char) readOne(), 1);
 						handled = false;
 					}
 					else
 					{
-						sequence = new string((char) reader.Peek(), 1);
 						handled = false;
 					}
 
 					System.Diagnostics.Debug.WriteLine(string.Format("Escape sequence: ^[{0}{1}{2}", escapeKind, sequence, !handled ? " (unhandled)" : ""));
 				}
 			}
+		}
 
-			endRun();
+		bool busy = false;
+		public void HandleInput(StreamReader reader)
+		{
+			if (busy)
+				System.Diagnostics.Debugger.Break();
+			busy = true;
+
+			while (!reader.EndOfStream)
+				buffer.Enqueue((char) reader.Read());
+
+			dataProcessed.Reset();
+			dataReceived.Set();
+			dataProcessed.WaitOne(TimeSpan.FromMilliseconds(500));
 
 			busy = false;
 		}
