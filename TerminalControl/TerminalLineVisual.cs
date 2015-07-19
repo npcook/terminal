@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 
-using Terminal;
+using npcook.Terminal;
 
-namespace TerminalControls
+namespace npcook.Terminal.Controls
 {
 	class TerminalLineVisual : DrawingVisual
 	{

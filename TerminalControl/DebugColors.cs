@@ -5,8 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media;
 
-namespace TerminalControls
+namespace npcook.Terminal.Controls
 {
+	using Color = System.Windows.Media.Color;
+
 	static class DebugColors
 	{
 		static Color[] colors;

@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TerminalControls
+namespace npcook.Terminal.Controls
 {
 	static class NativeMethods
 	{

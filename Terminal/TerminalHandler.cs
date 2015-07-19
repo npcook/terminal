@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Terminal
+namespace npcook.Terminal
 {
 	public class TitleChangeEventArgs : EventArgs
 	{
@@ -21,7 +21,7 @@ namespace Terminal
 
 	public interface ITerminalHandler
 	{
-		Terminal Terminal
+		TerminalBase Terminal
 		{ get; }
 
 		TerminalFont DefaultFont
@@ -32,8 +32,8 @@ namespace Terminal
 
 	public class XtermTerminalHandler : ITerminalHandler
 	{
-		Terminal terminal;
-		public Terminal Terminal
+		TerminalBase terminal;
+		public TerminalBase Terminal
 		{ get { return Terminal; } }
 
 		Point savedCursorPos;
@@ -59,7 +59,7 @@ namespace Terminal
 
 		public event EventHandler<TitleChangeEventArgs> TitleChanged;
 
-		public XtermTerminalHandler(Terminal terminal)
+		public XtermTerminalHandler(TerminalBase terminal)
 		{
 			this.terminal = terminal;
 
@@ -73,7 +73,7 @@ namespace Terminal
 		{
 			if (runBuilder.Length > 0)
 			{
-				System.Diagnostics.Debug.WriteLine("Read run: " + runBuilder.ToString());
+//				System.Diagnostics.Debug.WriteLine("Read run: " + runBuilder.ToString());
 				string text = runBuilder.ToString();
 				terminal.SetCharacters(text, font);
 				runBuilder.Clear();
@@ -177,6 +177,7 @@ namespace Terminal
 
 			if (extendedKind)
 			{
+				handled = false;
 			}
 			else
 			{
@@ -257,11 +258,13 @@ namespace Terminal
 				}
 			}
 
+			System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ [ {1}", handled ? "X" : " ", sequence));
 			return handled;
 		}
 
 		bool handleOsc()
 		{
+			bool handled = true;
 			string sequence = readUntil(ch => ch == 7);
 			sequence = sequence.Substring(0, sequence.Length - 1);
 			int kind = int.Parse(sequence.Substring(0, sequence.IndexOf(';')));
@@ -273,9 +276,31 @@ namespace Terminal
 					break;
 
 				default:
-					return false;
+					handled = false;
+					break;
 			}
-			return true;
+			System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ ] {1} [ST]", handled ? "X" : " ", sequence));
+            return handled;
+		}
+
+		bool applicationKeypad = false;
+		bool handleSingleEscape(char kind)
+		{
+			bool handled = true;
+			string sequence = new string(kind, 1);
+			if (kind == '=')
+			{
+				applicationKeypad = true;
+			}
+			else if (kind == '>')
+			{
+				applicationKeypad = false;
+			}
+			else
+				handled = false;
+			System.Diagnostics.Debug.WriteLine("  ^[ {0} Unknown sequence", sequence);
+
+			return handled;
 		}
 
 		void handleInputCore()
@@ -317,14 +342,12 @@ namespace Terminal
 					else if (escapeKind == '(')
 					{
 						sequence = new string((char) readOne(), 1);
+
 						handled = false;
+						System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ ( {1}", handled ? "X" : " ", sequence));
 					}
 					else
-					{
-						handled = false;
-					}
-
-					System.Diagnostics.Debug.WriteLine(string.Format("Escape sequence: ^[{0}{1}{2}", escapeKind, sequence, !handled ? " (unhandled)" : ""));
+						handled = handleSingleEscape(escapeKind);
 				}
 			}
 		}

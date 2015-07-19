@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Terminal
+namespace npcook.Terminal
 {
 	static public class TerminalColors
 	{

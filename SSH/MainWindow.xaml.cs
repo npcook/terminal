@@ -18,10 +18,10 @@ using System.IO;
 using System.Threading;
 using System.Windows.Interop;
 using System.Runtime.InteropServices;
-using Terminal;
-using TerminalControls;
+using npcook.Terminal;
+using npcook.Terminal.Controls;
 
-namespace SSH
+namespace npcook.Ssh
 {
 	/// <summary>
 	/// Interaction logic for MainWindow.xaml
@@ -46,7 +46,7 @@ namespace SSH
 				}
 			};
 
-			var terminal = new Terminal.Terminal();
+			var terminal = new Terminal.TerminalBase();
 			terminal.Size = new Terminal.Point(160, 40);
 			handler = new XtermTerminalHandler(terminal);
 			handler.DefaultFont = new TerminalFont()
@@ -63,8 +63,8 @@ namespace SSH
 				var connectionInfo = new PrivateKeyConnectionInfo(settings[0], settings[1], new PrivateKeyFile(settings[2], settings[3]));
 				SshClient client = new SshClient(connectionInfo);
 				client.Connect();
-
-				stream = client.CreateShellStream("xterm-256color", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
+				
+				stream = client.CreateShellStream("xterm", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
 				writer = new BinaryWriter(stream, Encoding.UTF8);
 				var reader = new StreamReader(stream, Encoding.UTF8, false, 2048, true);
 
@@ -76,7 +76,7 @@ namespace SSH
 						handler.HandleInput(reader);
 						terminalControl.EndChange();
 					}
-					catch (Exception ex)
+					catch (Exception)
 					{
 						System.Diagnostics.Debugger.Break();
 					}

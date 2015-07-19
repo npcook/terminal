@@ -15,7 +15,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace Terminal
+namespace npcook.Terminal
 {
 	public class LineShiftedUpEventArgs : EventArgs
 	{
@@ -49,7 +49,7 @@ namespace Terminal
 		}
 	}
 
-	public class Terminal
+	public class TerminalBase
 	{
 		int cursorCol;
 		int cursorRow;
@@ -58,12 +58,12 @@ namespace Terminal
 			get { return new Point(cursorCol, cursorRow); }
 			internal set
 			{
-				if (value.Col < 0 || value.Row < 0 || value.Col >= Size.Col || value.Row >= Size.Row)
-					throw new ArgumentOutOfRangeException("value", value, "CursorPos set outside of the terminal size");
-				cursorCol = value.Col;
-				cursorRow = value.Row;
+//				if (value.Col < 0 || value.Row < 0 || value.Col >= Size.Col || value.Row >= Size.Row)
+//					throw new ArgumentOutOfRangeException("value", value, "CursorPos set outside of the terminal size");
+				cursorCol = Math.Min(Math.Max(value.Col, 0), Size.Col - 1);
+				cursorRow = Math.Min(Math.Max(value.Row, 0), Size.Row - 1);
 
-				System.Diagnostics.Debug.WriteLine(string.Format("Moving cursor to {0}", value));
+//				System.Diagnostics.Debug.WriteLine(string.Format("Moving cursor to {0}", value));
 
 				if (CursorPosChanged != null)
 					CursorPosChanged(this, EventArgs.Empty);
@@ -76,22 +76,8 @@ namespace Terminal
 			get { return size; }
 			set
 			{
-				if (value.Row < size.Row)
-				{
-					var newScreen = new TerminalLine[value.Row];
-					Array.Copy(screen, size.Row - value.Row, newScreen, 0, value.Row);
-					screen = newScreen;
-				}
-				else if (value.Row > size.Row)
-				{
-					var newScreen = new TerminalLine[value.Row];
-					Array.Copy(screen, newScreen, size.Row);
-					for (int i = size.Row; i < value.Row; ++i)
-						newScreen[i] = new TerminalLine();
-					screen = newScreen;
-				}
-				foreach (var line in screen)
-					line.ColCount = value.Col;
+				screenBuffer.RowCount = value.Row;
+				altScreenBuffer.RowCount = value.Row;
 				size = value;
 
 				if (SizeChanged != null)
@@ -102,16 +88,36 @@ namespace Terminal
 		public TerminalFont CurrentFont
 		{ get; set; }
 
-		TerminalLine[] screen = new TerminalLine[0];
+		// DECAWM: When the cursor is at the end of a line, should it wrap to the beginning of the
+		// next line or should it stay at the end and overwrite
+		public bool AutoWrapMode
+		{ get; set; }
+
+		TerminalBuffer screenBuffer = new TerminalBuffer();
 		public IReadOnlyCollection<TerminalLine> Screen
-		{ get { return screen; } }
+		{ get { return screenBuffer.Lines; } }
+
+		TerminalBuffer altScreenBuffer = new TerminalBuffer();
+		public IReadOnlyCollection<TerminalLine> AltScreen
+		{ get { return altScreenBuffer.Lines; } }
+
+		TerminalBuffer currentBuffer;
+		TerminalLine[] lines
+		{ get { return currentBuffer.Lines; } }
+
+		public IReadOnlyCollection<TerminalLine> CurrentScreen
+		{ get { return currentBuffer.Lines; } }
 
 		public event EventHandler<EventArgs> CursorPosChanged;
 		public event EventHandler<EventArgs> SizeChanged;
 		public event EventHandler<LineShiftedUpEventArgs> LineShiftedUp;
 
-		public Terminal()
-		{ }
+		public TerminalBase()
+		{
+			currentBuffer = screenBuffer;
+
+			AutoWrapMode = true;
+		}
 
 		void advanceCursorRow()
 		{
@@ -121,11 +127,11 @@ namespace Terminal
 
 			if (cursorRow == Size.Row)
 			{
-				var oldLine = screen[0];
+				var oldLine = lines[0];
 				var newLine = new TerminalLine();
 				cursorRow--;
-				Array.Copy(screen, 1, screen, 0, screen.Length - 1);
-				screen[screen.Length - 1] = newLine;
+				Array.Copy(lines, 1, lines, 0, lines.Length - 1);
+				lines[lines.Length - 1] = newLine;
 
 				if (LineShiftedUp != null)
 					LineShiftedUp(this, new LineShiftedUpEventArgs(oldLine, newLine));
@@ -146,10 +152,13 @@ namespace Terminal
 					controlFound = true;
 				lineEnd = textIndex + Math.Min(lineEnd - textIndex, Size.Col - CursorPos.Col);
 
-				screen[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
+				lines[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
 				if (advanceCursor && !font.Hidden)
 					cursorCol += lineEnd - textIndex;
 				textIndex = lineEnd;
+
+				if (cursorCol == Size.Col && !AutoWrapMode)
+					cursorCol--;
 
 				bool endOfLine = (cursorCol == Size.Col);
 				bool nextRow = endOfLine;

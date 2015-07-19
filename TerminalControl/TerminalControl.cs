@@ -16,10 +16,10 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-using Terminal;
-using Color = Terminal.Color;
+using npcook.Terminal;
+using Color = npcook.Terminal.Color;
 
-namespace TerminalControls
+namespace npcook.Terminal.Controls
 {
 	/// <summary>
 	/// Provides a visual representation of a <c>Terminal.Terminal</c>
@@ -61,13 +61,13 @@ namespace TerminalControls
 		// Visuals for the terminal screen (same size as number of rows)
 		readonly List<TerminalLineVisual> screen = new List<TerminalLineVisual>();
 		// The terminal backing this visual representation
-		Terminal.Terminal terminal = null;
+		TerminalBase terminal = null;
 		// Visual for the caret
 		readonly DrawingVisual caret;
 		// Timer for blinking the caret
 		Timer caretTimer;
 		
-		public Terminal.Terminal Terminal
+		public TerminalBase Terminal
 		{
 			get { return terminal; }
 			set

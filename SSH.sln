@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.22823.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSH", "SSH\SSH.csproj", "{CC7A5CAF-0A37-4205-8945-23A453CBE7C7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ssh", "SSH\Ssh.csproj", "{CC7A5CAF-0A37-4205-8945-23A453CBE7C7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Terminal", "Terminal\Terminal.csproj", "{8C191969-6ACE-4D88-ACCE-0334169AD1CE}"
 EndProject
