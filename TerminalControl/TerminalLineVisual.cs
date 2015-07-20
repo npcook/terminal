@@ -32,6 +32,8 @@ namespace npcook.Terminal.Controls
 			DrawRunBoxes = false;
 
 			line.RunsChanged += Line_RunsChanged;
+
+			redraw();
 		}
 
 		private void Line_RunsChanged(object sender, EventArgs e)
@@ -53,14 +55,27 @@ namespace npcook.Terminal.Controls
 			int index = 0;
 			var drawPoint = new System.Windows.Point(0, 0);
 			foreach (var run in Line.Runs)
-			{			
+			{
+				SolidColorBrush foreground;
+				SolidColorBrush background;
+				if (run.Font.Inverse)
+				{
+					foreground = Terminal.GetFontBackgroundBrush(run.Font);
+					background = Terminal.GetFontForegroundBrush(run.Font);
+				}
+				else
+				{
+					foreground = Terminal.GetFontForegroundBrush(run.Font);
+					background = Terminal.GetFontBackgroundBrush(run.Font);
+				}
+
 				var ft = new FormattedText(
 					run.Text,
 					System.Globalization.CultureInfo.CurrentUICulture,
 					Terminal.FlowDirection,
 					Terminal.GetFontTypeface(run.Font),
 					Terminal.FontSize,
-					Terminal.GetFontForegoundBrush(run.Font),
+					foreground,
 					new NumberSubstitution(),
 					TextFormattingMode.Ideal
 					);
@@ -73,13 +88,12 @@ namespace npcook.Terminal.Controls
 				if (textDecorations.Count > 0)
 					ft.SetTextDecorations(textDecorations);
 
-				context.DrawText(ft, drawPoint);
-
+				Pen border = null;
 				if (DrawRunBoxes)
-				{
-					SolidColorBrush backgroundBrush = DebugColors.GetBrush(index);
-					context.DrawRoundedRectangle(null, new Pen(backgroundBrush, 1), new Rect(drawPoint, new Vector(ft.Width - 1, ft.Height)), 1, 1);
-				}
+					border = new Pen(DebugColors.GetBrush(index), 1);
+				context.DrawRoundedRectangle(background, border, new Rect(drawPoint, new Vector(ft.WidthIncludingTrailingWhitespace - 1, ft.Height)), 1, 1);
+
+				context.DrawText(ft, drawPoint);
 				drawPoint.X += ft.WidthIncludingTrailingWhitespace;
 
 				textDecorations.Clear();

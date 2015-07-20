@@ -42,6 +42,7 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CsiCodes.cs" />
     <Compile Include="TerminalBase.cs">
       <SubType>Code</SubType>
     </Compile>

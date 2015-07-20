@@ -30,7 +30,7 @@ namespace npcook.Terminal
 				Color.FromRgb(0, 0, 238),       // Dull Blue
 				Color.FromRgb(205, 0, 205),     // Dull Purple
 				Color.FromRgb(0, 205, 205),     // Dull Cyan
-				Color.FromRgb(229, 229, 229),   // Dull White
+				Color.FromRgb(192, 192, 192),   // Dull White
 			}[index];
 			return color;
 		}

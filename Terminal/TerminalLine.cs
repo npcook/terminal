@@ -61,6 +61,53 @@ namespace npcook.Terminal
 			length = toLength;
 		}
 
+		public void DeleteCharacters(int index, int length)
+		{
+			if (length == 0)
+				return;
+
+			int totalIndex = 0;
+			for (int i = 0; i < runs.Count; ++i)
+			{
+				var run = runs[i];
+
+				// Deleting the middle of a run
+				if (index >= totalIndex && index + length < totalIndex + run.Text.Length)
+				{
+					run.Text = run.Text.Substring(0, index - totalIndex) + run.Text.Substring(index + length);
+					if (run.Text.Length == 0)
+						runs.RemoveAt(i);
+					break;
+				}
+				// Deleting the ending of a run
+				if (index >= totalIndex && index < totalIndex + run.Text.Length)
+				{
+					run.Text = run.Text.Substring(0, totalIndex - index);
+					length -= totalIndex - index;
+				}
+				// Deleting an entire run
+				else if (index >= totalIndex && index + length >= totalIndex + run.Text.Length)
+				{
+					runs.RemoveAt(i);
+					i--;
+					length -= run.Text.Length;
+				}
+				// Deleting the beginning of a run
+				else if (index >= totalIndex)
+				{
+					run.Text = run.Text.Substring(index - totalIndex);
+					break;
+				}
+				else
+					totalIndex += run.Text.Length;
+			}
+
+			this.length -= length;
+
+			if (RunsChanged != null)
+				RunsChanged(this, EventArgs.Empty);
+		}
+
 		public void SetCharacters(int index, char[] chars, TerminalFont font)
 		{
 			SetCharacters(index, new string(chars), font);

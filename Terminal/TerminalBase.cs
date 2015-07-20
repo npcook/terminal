@@ -111,12 +111,24 @@ namespace npcook.Terminal
 		public event EventHandler<EventArgs> CursorPosChanged;
 		public event EventHandler<EventArgs> SizeChanged;
 		public event EventHandler<LineShiftedUpEventArgs> LineShiftedUp;
+		public event EventHandler<EventArgs> ScreenChanged;
 
 		public TerminalBase()
 		{
 			currentBuffer = screenBuffer;
 
 			AutoWrapMode = true;
+		}
+
+		public void ChangeToScreen(bool alternate)
+		{
+			if (alternate)
+				currentBuffer = altScreenBuffer;
+			else
+				currentBuffer = screenBuffer;
+
+			if (ScreenChanged != null)
+				ScreenChanged(this, EventArgs.Empty);
 		}
 
 		void advanceCursorRow()
@@ -136,6 +148,16 @@ namespace npcook.Terminal
 				if (LineShiftedUp != null)
 					LineShiftedUp(this, new LineShiftedUpEventArgs(oldLine, newLine));
 			}
+		}
+
+		public void EraseCharacters(int length, bool advanceCursor = true)
+		{
+			SetCharacters(new string(' ', length), new TerminalFont() { Hidden = true }, advanceCursor);
+		}
+
+		public void DeleteCharacters(int length)
+		{
+			lines[CursorPos.Row].DeleteCharacters(CursorPos.Col, length);
 		}
 
 		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)

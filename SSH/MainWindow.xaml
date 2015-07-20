@@ -9,7 +9,7 @@
         Title="MainWindow" Height="350" Width="525" FocusManager.FocusedElement="{ Binding ElementName=terminalControl }" GotKeyboardFocus="OnKeyboardFocus">
     <Grid>
         <ScrollViewer Focusable="False">
-            <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13.333" Background="Black" VerticalAlignment="Top">
+            <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13" Background="Black" VerticalAlignment="Top">
             </term:TerminalControl>
         </ScrollViewer>
     </Grid>

@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Terminal", "Terminal\Termin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalControl", "TerminalControl\TerminalControl.csproj", "{7AD4FE4F-3530-4F84-88D9-D122BF6FC7C5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTest", "TerminalTest\TerminalTest.csproj", "{1EE6B27D-6717-4ECA-8294-72B6B52B42FE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{7AD4FE4F-3530-4F84-88D9-D122BF6FC7C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7AD4FE4F-3530-4F84-88D9-D122BF6FC7C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7AD4FE4F-3530-4F84-88D9-D122BF6FC7C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1EE6B27D-6717-4ECA-8294-72B6B52B42FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EE6B27D-6717-4ECA-8294-72B6B52B42FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1EE6B27D-6717-4ECA-8294-72B6B52B42FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1EE6B27D-6717-4ECA-8294-72B6B52B42FE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

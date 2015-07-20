@@ -89,6 +89,7 @@ namespace npcook.Terminal
 		public bool Italic;
 		public bool Strike;
 		public bool Hidden;
+		public bool Inverse;
 
 		public override bool Equals(object obj)
 		{
@@ -117,7 +118,8 @@ namespace npcook.Terminal
 				_1.Background == _2.Background &&
 				_1.Bold == _2.Bold &&
 				_1.Underline == _2.Underline &&
-				_1.Hidden == _2.Hidden;
+				_1.Hidden == _2.Hidden && 
+				_1.Inverse == _2.Inverse;
 		}
 
 		public static bool operator !=(TerminalFont _1, TerminalFont _2)

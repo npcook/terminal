@@ -60,11 +60,13 @@ namespace npcook.Ssh
 			var dataThread = new Thread(() =>
 			{
 				var settings = File.ReadAllLines(@"X:\settings.txt");
-				var connectionInfo = new PrivateKeyConnectionInfo(settings[0], settings[1], new PrivateKeyFile(settings[2], settings[3]));
+				// var connectionInfo = new PrivateKeyConnectionInfo(settings[0], settings[1], new PrivateKeyFile(settings[2], settings[3]));
+				var connectionInfo = new PasswordConnectionInfo(settings[0], settings[1], settings[2]);
+				
 				SshClient client = new SshClient(connectionInfo);
 				client.Connect();
 				
-				stream = client.CreateShellStream("xterm", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
+				stream = client.CreateShellStream("xterm-256color", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
 				writer = new BinaryWriter(stream, Encoding.UTF8);
 				var reader = new StreamReader(stream, Encoding.UTF8, false, 2048, true);
 
@@ -97,7 +99,9 @@ namespace npcook.Ssh
 				{
 					// Convert to char array because BinaryWriter sends strings prefixed with their
 					// length
-					if (e.Key == Key.Left)
+					if (e.Key == Key.Tab)
+						writer.Write('\t');
+					else if (e.Key == Key.Left)
 						writer.Write("\x1b[D".ToCharArray());
 					else if (e.Key == Key.Right)
 						writer.Write("\x1b[C".ToCharArray());
@@ -134,7 +138,7 @@ namespace npcook.Ssh
 					{
 						if (c == 4)
 							System.Diagnostics.Debugger.Break();
-						if (!char.IsControl(c) || c == 8 || c == 13)
+						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
 							writer.Write(c);
 						else
 							System.Diagnostics.Debugger.Break();

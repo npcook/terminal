@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading;
+using System.Timers;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -78,6 +78,7 @@ namespace npcook.Terminal.Controls
 					terminal.CursorPosChanged -= Terminal_CursorPosChanged;
 					terminal.SizeChanged -= Terminal_SizeChanged;
 					terminal.LineShiftedUp -= Terminal_LineShiftedUp;
+					terminal.ScreenChanged -= Terminal_ScreenChanged;
 				}
 				terminal = value;
 
@@ -87,7 +88,7 @@ namespace npcook.Terminal.Controls
 				screen.Clear();
 
 				// Create new visuals for each line in the new terminal screen
-				foreach (var line in terminal.Screen)
+				foreach (var line in terminal.CurrentScreen)
 				{
 					var visual = new TerminalLineVisual(this, line);
 					visual.Offset = new Vector(0.0, screen.Count * CharHeight);
@@ -98,6 +99,7 @@ namespace npcook.Terminal.Controls
 				terminal.CursorPosChanged += Terminal_CursorPosChanged;
 				terminal.SizeChanged += Terminal_SizeChanged;
 				terminal.LineShiftedUp += Terminal_LineShiftedUp;
+				terminal.ScreenChanged += Terminal_ScreenChanged;
 			}
 		}
 
@@ -113,7 +115,10 @@ namespace npcook.Terminal.Controls
 			AddVisualChild(caret);
 
 			uint caretBlinkTime = NativeMethods.GetCaretBlinkTime();
-			caretTimer = new Timer(_ => Dispatcher.Invoke(() => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0)), null, caretBlinkTime, caretBlinkTime);
+			caretTimer = new Timer(caretBlinkTime);
+			caretTimer.Elapsed += (sender, e) => Dispatcher.Invoke(() => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0));
+			caretTimer.AutoReset = true;
+			caretTimer.Start();
 		}
 
 		public Typeface GetFontTypeface(TerminalFont? font)
@@ -123,7 +128,7 @@ namespace npcook.Terminal.Controls
 				return new Typeface(
 					FontFamily,
 					font.Value.Italic ? FontStyles.Italic : FontStyles.Normal,
-					font.Value.Bold ? FontWeights.Bold : FontWeights.Normal,
+					font.Value.Bold ? FontWeights.Bold : FontWeights.Light,
 					FontStretches.Normal);
 			}
 			else
@@ -166,6 +171,11 @@ namespace npcook.Terminal.Controls
 		private void Terminal_SizeChanged(object sender, EventArgs e)
 		{ }
 
+		private void Terminal_ScreenChanged(object sender, EventArgs e)
+		{
+			Dispatcher.Invoke(() => Terminal = Terminal);
+		}
+
 		protected override Size MeasureOverride(Size availableSize)
 		{
 			if (terminal != null)
@@ -181,9 +191,9 @@ namespace npcook.Terminal.Controls
 		
 		void updateCharDimensions()
 		{
-			var ft = new FormattedText("X", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GetFontTypeface(null), FontSize, Brushes.Transparent);
+			var ft = new FormattedText("y", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GetFontTypeface(null), FontSize, Brushes.Transparent);
 			CharWidth = ft.Width;
-			CharHeight = FontSize;
+			CharHeight = ft.Height;
 
 			System.Diagnostics.Debug.Assert(CharWidth > 0 && CharHeight > 0);
 
@@ -191,7 +201,7 @@ namespace npcook.Terminal.Controls
 			
 			var caretPen = new Pen(Brushes.White, SystemParameters.CaretWidth);
 			caretPen.Freeze();
-			context.DrawLine(caretPen, new System.Windows.Point(0.0, 0.0), new System.Windows.Point(0.0, CharHeight + 2));
+			context.DrawLine(caretPen, new System.Windows.Point(0.0, 0.0), new System.Windows.Point(0.0, CharHeight));
 
 			context.Close();
 		}
@@ -226,6 +236,10 @@ namespace npcook.Terminal.Controls
 			// Add 0.5 to each dimension so the caret is aligned to pixels
 			if (terminal != null)
 				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * terminal.CursorPos.Row) + 0.5);
+
+			caretTimer.Stop();
+			caret.Opacity = 1.0;
+			caretTimer.Start();
 		}
 
 		// Bulk changes can be deferred to avoid redundantly updating visuals
@@ -275,13 +289,22 @@ namespace npcook.Terminal.Controls
 			return brush;
 		}
 
-		internal SolidColorBrush GetFontForegoundBrush(TerminalFont font)
+		internal SolidColorBrush GetFontForegroundBrush(TerminalFont font)
 		{
 			var color = font.Foreground;
 			if (font.Bold)
-				return GetBrush(TerminalColors.MakeBold(font.Foreground));
+				return GetBrush(TerminalColors.MakeBold(color));
 			else
-				return GetBrush(font.Foreground);
+				return GetBrush(color);
+		}
+
+		internal SolidColorBrush GetFontBackgroundBrush(TerminalFont font)
+		{
+			var color = font.Background;
+			if (font.Bold)
+				return GetBrush(TerminalColors.MakeBold(color));
+			else
+				return GetBrush(color);
 		}
 	}
 }

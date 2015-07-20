@@ -120,6 +120,8 @@ namespace npcook.Terminal
 				font.Italic = true;
 			else if (sgr == 4)
 				font.Underline = true;
+			else if (sgr == 7)
+				font.Inverse = true;
 			else if (sgr == 8)
 				font.Hidden = true;
 			else if (sgr == 9)
@@ -130,6 +132,8 @@ namespace npcook.Terminal
 				font.Italic = false;
 			else if (sgr == 24)
 				font.Underline = false;
+			else if (sgr == 27)
+				font.Inverse = false;
 			else if (sgr == 28)
 				font.Hidden = false;
 			else if (sgr == 29)
@@ -146,9 +150,55 @@ namespace npcook.Terminal
 				font.Background = TerminalColors.GetXtermColor(getAtOrDefault(codes, 2, 0));
 			else if (sgr == 49)
 				font.Background = DefaultFont.Background;
+			else if (sgr >= 90 && sgr <= 97)
+				font.Foreground = TerminalColors.GetBasicColor(sgr - 90);
+			else if (sgr >= 100 && sgr <= 107)
+				font.Background = TerminalColors.GetBasicColor(sgr - 100);
 			else
 				return false;
 			return true;
+		}
+
+		bool handleDecSet(int kind)
+		{
+			bool handled = true;
+			switch (kind)
+			{
+				case 7:
+					terminal.AutoWrapMode = true;
+					break;
+
+				case 1049:
+					savedCursorPos = terminal.CursorPos;
+					terminal.ChangeToScreen(true);
+					break;
+
+				default:
+					handled = false;
+					break;
+			}
+			return handled;
+		}
+
+		bool handleDecReset(int kind)
+		{
+			bool handled = true;
+			switch (kind)
+			{
+				case 7:
+					terminal.AutoWrapMode = false;
+					break;
+
+				case 1049:
+					terminal.CursorPos = savedCursorPos;
+					terminal.ChangeToScreen(false);
+					break;
+
+				default:
+					handled = false;
+					break;
+			}
+			return handled;
 		}
 
 		bool handleCsi()
@@ -158,13 +208,13 @@ namespace npcook.Terminal
 			endRun();
 
 			string sequence = readUntil(ch => ch >= 64 && ch <= 126);
-			bool extendedKind = sequence[0] == '?';
+			bool isPrivate = sequence[0] == '?';
 			char kind = sequence.Last();
 			int?[] codes = null;
 			try
 			{
 				string realSequence;
-				if (extendedKind)
+				if (isPrivate)
 					realSequence = sequence.Substring(1, sequence.Length - 2);
 				else
 					realSequence = sequence.Substring(0, sequence.Length - 1);
@@ -175,9 +225,23 @@ namespace npcook.Terminal
 				var a = ex.StackTrace;
 			}
 
-			if (extendedKind)
+			Point oldCursorPos = terminal.CursorPos;
+			if (isPrivate)
 			{
-				handled = false;
+				switch (kind)
+				{
+					case 'h':
+						handled = handleDecSet(getAtOrDefault(codes, 0, 0));
+						break;
+
+					case 'l':
+						handled = handleDecReset(getAtOrDefault(codes, 0, 0));
+						break;
+
+					default:
+						handled = false;
+						break;
+				}
 			}
 			else
 			{
@@ -217,13 +281,60 @@ namespace npcook.Terminal
 
 					case 'H':
 					case 'f':
-						int row = getAtOrDefault(codes, 0, 1);
-						int col = getAtOrDefault(codes, 1, 1);
-						terminal.CursorPos = new Point(row - 1, col - 1);
+						{
+							int row = getAtOrDefault(codes, 0, 1);
+							int col = getAtOrDefault(codes, 1, 1);
+							terminal.CursorPos = new Point(col - 1, row - 1);
+						}
+						break;
+
+					case 'd':
+						{
+							int row = getAtOrDefault(codes, 0, 1);
+							terminal.CursorPos = new Point(terminal.CursorPos.Col, row - 1);
+						}
+						break;
+
+					case 'e':
+						{
+							int rows = getAtOrDefault(codes, 0, 1);
+							terminal.CursorPos = new Point(terminal.CursorPos.Col, terminal.CursorPos.Row + rows);
+						}
+						break;
+
+					case 'J':
+						switch (getAtOrDefault(codes, 0, 0))
+						{
+							case 0:
+								terminal.EraseCharacters(terminal.Size.Col - oldCursorPos.Col, false);
+								for (int i = oldCursorPos.Row + 1; i < terminal.Size.Row; ++i)
+								{
+									terminal.CursorPos = new Point(0, i);
+									terminal.EraseCharacters(terminal.Size.Col, false);
+								}
+								break;
+
+							case 1:
+								for (int i = 0; i < oldCursorPos.Row; ++i)
+								{
+									terminal.CursorPos = new Point(0, i);
+									terminal.EraseCharacters(terminal.Size.Col, false);
+								}
+								terminal.EraseCharacters(oldCursorPos.Col, false);
+								break;
+
+							case 2:
+								for (int i = 0; i < terminal.Size.Row; ++i)
+								{
+									terminal.CursorPos = new Point(0, i);
+									terminal.EraseCharacters(terminal.Size.Col, false);
+								}
+								break;
+						}
+						terminal.CursorPos = oldCursorPos;
 						break;
 
 					case 'K':
-						Point oldCursorPos = terminal.CursorPos;
 						switch (getAtOrDefault(codes, 0, 0))
 						{
 							case 0:
@@ -241,6 +352,13 @@ namespace npcook.Terminal
 								break;
 						}
 						terminal.CursorPos = oldCursorPos;
+						break;
+
+					case 'P':
+						terminal.DeleteCharacters(getAtOrDefault(codes, 0, 1));
+						break;
+
+					case 'r':
 						break;
 
 					case 's':
@@ -298,7 +416,7 @@ namespace npcook.Terminal
 			}
 			else
 				handled = false;
-			System.Diagnostics.Debug.WriteLine("  ^[ {0} Unknown sequence", sequence);
+			System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ {1}", handled ? "X" : " ", sequence));
 
 			return handled;
 		}
@@ -358,7 +476,7 @@ namespace npcook.Terminal
 			if (busy)
 				System.Diagnostics.Debugger.Break();
 			busy = true;
-
+			
 			while (!reader.EndOfStream)
 				buffer.Enqueue((char) reader.Read());
 
