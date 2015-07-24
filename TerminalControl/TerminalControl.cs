@@ -57,9 +57,11 @@ namespace npcook.Terminal.Controls
 			get { return (Brush) GetValue(BackgroundProperty); }
 			set { SetValue(FontFamilyProperty, value); }
 		}
-		
+
+		const int historySize = 2000;
+
 		// Visuals for the terminal screen (same size as number of rows)
-		readonly List<TerminalLineVisual> screen = new List<TerminalLineVisual>();
+		readonly Deque<TerminalLineVisual> history = new Deque<TerminalLineVisual>(historySize);
 		// The terminal backing this visual representation
 		TerminalBase terminal = null;
 		// Visual for the caret
@@ -83,16 +85,16 @@ namespace npcook.Terminal.Controls
 				terminal = value;
 
 				// Remove all lines from the visual tree and the screen
-				foreach (var line in screen)
+				foreach (var line in history)
 					RemoveVisualChild(line);
-				screen.Clear();
+				history.Clear();
 
 				// Create new visuals for each line in the new terminal screen
 				foreach (var line in terminal.CurrentScreen)
 				{
 					var visual = new TerminalLineVisual(this, line);
-					visual.Offset = new Vector(0.0, screen.Count * CharHeight);
-					screen.Add(visual);
+					visual.Offset = new Vector(0.0, history.Count * CharHeight);
+					history.PushBack(visual);
 					AddVisualChild(visual);
 				}
 
@@ -109,8 +111,64 @@ namespace npcook.Terminal.Controls
 		public double CharHeight
 		{ get; private set; }
 
+		void initContextMenu()
+		{
+			ContextMenu = new ContextMenu();
+			ContextMenu.BeginInit();
+
+			ContextMenu.ItemsSource = new MenuItem[]
+			{
+				new MenuItem() { Name = "Copy", Command = ApplicationCommands.Copy },
+				new MenuItem() { Name = "Paste", Command = ApplicationCommands.Paste },
+			};
+
+			CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, OnCopyExecute, OnCopyCanExecute));
+			CommandBindings.Add(new CommandBinding(ApplicationCommands.Paste, OnPasteExecute, OnPasteCanExecute));
+
+			ContextMenu.EndInit();
+		}
+
+		string getSelectedText()
+		{
+			var builder = new StringBuilder();
+			bool first = true;
+			foreach (var line in selectedLines)
+			{
+				if (first)
+					first = false;
+				else
+					builder.Append(Environment.NewLine);
+				builder.Append(line.Line.GetCharacters(line.SelectionStart, Math.Min(line.SelectionEnd - line.SelectionStart, line.Line.Length)));
+			}
+			return builder.ToString();
+		}
+
+		void OnCopyCanExecute(object sender, CanExecuteRoutedEventArgs e)
+		{
+			e.CanExecute = selectedLines.Count > 0;
+		}
+
+		void OnCopyExecute(object sender, ExecutedRoutedEventArgs e)
+		{
+			if (selectedLines.Count > 0)
+				Clipboard.SetText(getSelectedText());
+		}
+
+		void OnPasteCanExecute(object sender, CanExecuteRoutedEventArgs e)
+		{
+			e.CanExecute = Clipboard.ContainsText();
+		}
+
+		void OnPasteExecute(object sender, ExecutedRoutedEventArgs e)
+		{
+			if (Clipboard.ContainsText())
+				; // TODO: Implement pasting
+		}
+
 		public TerminalControl()
 		{
+			Cursor = Cursors.IBeam;
+
 			caret = new DrawingVisual();
 			AddVisualChild(caret);
 
@@ -119,6 +177,85 @@ namespace npcook.Terminal.Controls
 			caretTimer.Elapsed += (sender, e) => Dispatcher.Invoke(() => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0));
 			caretTimer.AutoReset = true;
 			caretTimer.Start();
+
+			initContextMenu();
+		}
+
+		protected override HitTestResult HitTestCore(PointHitTestParameters hitTestParameters)
+		{
+			double Y = hitTestParameters.HitPoint.Y;
+			int lineIndex = (int) (Y / CharHeight);
+			if (lineIndex < 0 || lineIndex >= history.Count)
+				return null;
+			return new PointHitTestResult(history[lineIndex], hitTestParameters.HitPoint);
+		}
+
+		bool selecting = false;
+		bool selected = false;
+		Point selectionStart;
+		List<TerminalLineVisual> selectedLines = new List<TerminalLineVisual>();
+		protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+		{
+			base.OnMouseLeftButtonDown(e);
+
+			var position = e.GetPosition(this);
+			selectionStart = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
+			selecting = true;
+
+			foreach (var line in selectedLines)
+				line.Select(0, 0);
+			selectedLines.Clear();
+
+			CaptureMouse();
+		}
+
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+
+			if (selecting)
+			{
+				var newSelectedLines = new List<TerminalLineVisual>();
+
+				var position = e.GetPosition(this);
+				Point selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
+
+				bool swapPoints = selectionStart.Row == selectionEnd.Row ? selectionStart.Col > selectionEnd.Col : selectionStart.Row > selectionEnd.Row;
+
+				Point firstPoint = swapPoints ? selectionEnd : selectionStart;
+				Point secondPoint = swapPoints ? selectionStart : selectionEnd;
+
+				if (firstPoint.Row == secondPoint.Row)
+				{
+					history[selectionStart.Row].Select(firstPoint.Col, secondPoint.Col);
+					newSelectedLines.Add(history[selectionStart.Row]);
+				}
+				else
+				{
+					for (int i = firstPoint.Row; i <= secondPoint.Row; ++i)
+					{
+						if (i == firstPoint.Row)
+							history[i].Select(firstPoint.Col, terminal.Size.Col);
+						else if (i == secondPoint.Row)
+							history[i].Select(0, secondPoint.Col);
+						else
+							history[i].Select(0, terminal.Size.Col);
+						newSelectedLines.Add(history[i]);
+					}
+				}
+
+				foreach (var line in selectedLines.Where(visual => !newSelectedLines.Contains(visual)))
+					line.Select(0, 0);
+				selectedLines = newSelectedLines;
+			}
+		}
+
+		protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+		{
+			base.OnMouseLeftButtonUp(e);
+			
+			selecting = false;
+			ReleaseMouseCapture();
 		}
 
 		public Typeface GetFontTypeface(TerminalFont? font)
@@ -139,22 +276,23 @@ namespace npcook.Terminal.Controls
 		{
 			Dispatcher.Invoke(() =>
 			{
-				int oldIndex = -1;
-				for (int i = 0; i < screen.Count; ++i)
+				if (history.Count == historySize)
 				{
-					var visual = screen[i];
-					if (visual.Line == e.OldLine)
-						oldIndex = i;
-					else
+					RemoveVisualChild(history.PopFront());
+					for (int i = 0; i < history.Count; ++i)
+					{
+						var visual = history[i];
 						visual.Offset = new Vector(0.0, (i - 1) * CharHeight);
+					}
 				}
-				RemoveVisualChild(screen[oldIndex]);
-				screen.RemoveAt(oldIndex);
 
 				var newVisual = new TerminalLineVisual(this, e.NewLine);
-				newVisual.Offset = new Vector(0.0, screen.Count * CharHeight);
-				screen.Add(newVisual);
+				newVisual.Offset = new Vector(0.0, history.Count * CharHeight);
+				history.PushBack(newVisual);
 				AddVisualChild(newVisual);
+
+				if (history.Count < historySize)
+					InvalidateMeasure();
 			});
 		}
 
@@ -183,7 +321,7 @@ namespace npcook.Terminal.Controls
 				// The size is based on the number of rows and columns in the terminal
 				return new Size(
 					Math.Min(availableSize.Width, CharWidth * terminal.Size.Col),
-					Math.Min(availableSize.Height, CharHeight * terminal.Size.Row));
+					Math.Max(0, Math.Min(availableSize.Height, CharHeight * history.Count)));
 			}
 			else
 				return Size.Empty;
@@ -216,7 +354,7 @@ namespace npcook.Terminal.Controls
 		protected override int VisualChildrenCount
 		{
 			// Each line is a child, plus 1 for the caret
-			get { return screen.Count + 1; }
+			get { return history.Count + 1; }
 		}
 
 		protected override Visual GetVisualChild(int index)
@@ -225,17 +363,18 @@ namespace npcook.Terminal.Controls
 				throw new ArgumentOutOfRangeException("index", index, "");
 
 			// Make sure the caret comes last so it gets drawn over the lines
-			if (index < screen.Count)
-				return screen[index];
+			if (index < history.Count)
+				return history[index];
 			else
 				return caret;
 		}
 
 		void updateCaret()
 		{
+			int adjustedRowPos = terminal.CursorPos.Row + history.Count - terminal.Size.Row;
 			// Add 0.5 to each dimension so the caret is aligned to pixels
 			if (terminal != null)
-				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * terminal.CursorPos.Row) + 0.5);
+				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * adjustedRowPos) + 0.5);
 
 			caretTimer.Stop();
 			caret.Opacity = 1.0;
@@ -305,6 +444,22 @@ namespace npcook.Terminal.Controls
 				return GetBrush(TerminalColors.MakeBold(color));
 			else
 				return GetBrush(color);
+		}
+
+		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnGotKeyboardFocus(e);
+
+			caret.Opacity = 1.0;
+			caretTimer.Start();
+		}
+
+		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnLostKeyboardFocus(e);
+
+			caretTimer.Stop();
+			caret.Opacity = 0.0;
 		}
 	}
 }

@@ -20,6 +20,20 @@ namespace npcook.Terminal.Controls
 		public TerminalLine Line
 		{ get; }
 
+		public int SelectionStart
+		{ get; private set; }
+
+		public int SelectionEnd
+		{ get; private set; }
+
+		public void Select(int start, int end)
+		{
+			SelectionStart = start;
+			SelectionEnd = end;
+
+			redraw();
+		}
+
 		// Should boxes be drawn around every run?
 		internal bool DrawRunBoxes
 		{ get; set; }
@@ -51,7 +65,7 @@ namespace npcook.Terminal.Controls
 			var context = RenderOpen();
 
 			var textDecorations = new TextDecorationCollection();
-
+			
 			int index = 0;
 			var drawPoint = new System.Windows.Point(0, 0);
 			foreach (var run in Line.Runs)
@@ -99,6 +113,16 @@ namespace npcook.Terminal.Controls
 				textDecorations.Clear();
 
 				index++;
+			}
+
+			if (SelectionStart != SelectionEnd)
+			{
+				var selectRect = new Rect(
+					new System.Windows.Point(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart), 0.0),
+					new System.Windows.Point(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd), Terminal.CharHeight));
+
+				var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(128, 90, 180, 230));
+				context.DrawRoundedRectangle(brush, null, selectRect, 1, 1);
 			}
 
 			context.Close();
