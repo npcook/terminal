@@ -5,12 +5,15 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:npcook.Ssh"
         xmlns:term="clr-namespace:npcook.Terminal.Controls;assembly=npcook.Terminal.Controls"
-        mc:Ignorable="d" SizeToContent="WidthAndHeight"
-        Title="MainWindow" Height="350" Width="525" FocusManager.FocusedElement="{ Binding ElementName=terminalControl }" GotKeyboardFocus="OnKeyboardFocus">
-    <Grid>
-        <ScrollViewer Focusable="False">
+        mc:Ignorable="d"
+        Title="MainWindow" SizeToContent="WidthAndHeight" FocusManager.FocusedElement="{ Binding ElementName=terminalControl }" GotKeyboardFocus="OnKeyboardFocus">
+    <StackPanel Orientation="Vertical">
+        <ToolBar x:Name="toolBar">
+            <Button x:Name="button" Content="Connect" Height="22" VerticalAlignment="Top" Width="75"/>
+        </ToolBar>
+        <local:TerminalScrollViewer x:Name="terminalScroll" Focusable="False" Background="Black">
             <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13" Background="Black" VerticalAlignment="Top">
             </term:TerminalControl>
-        </ScrollViewer>
-    </Grid>
+        </local:TerminalScrollViewer>
+    </StackPanel>
 </Window>

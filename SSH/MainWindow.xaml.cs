@@ -29,8 +29,13 @@ namespace npcook.Ssh
 	public partial class MainWindow : Window
 	{
 		private HwndSource hwndSource;
-		
+
+#if USE_LIBSSHNET
+		libsshnetStream stream;
+#else
+		SshClient client;
 		ShellStream stream;
+#endif
 		BinaryWriter writer;
 		ITerminalHandler handler;
 		public MainWindow()
@@ -46,9 +51,15 @@ namespace npcook.Ssh
 				}
 			};
 
-			var terminal = new Terminal.TerminalBase();
+			var terminal = new XtermTerminal();
+			handler = terminal;
+
+			terminalControl.SizeChanged += (sender, e) =>
+			{
+				terminalScroll.ScrollToBottom();
+			};
+
 			terminal.Size = new Terminal.Point(160, 40);
-			handler = new XtermTerminalHandler(terminal);
 			handler.DefaultFont = new TerminalFont()
 			{
 				Foreground = TerminalColors.GetBasicColor(7)
@@ -60,13 +71,24 @@ namespace npcook.Ssh
 			var dataThread = new Thread(() =>
 			{
 				var settings = File.ReadAllLines(@"X:\settings.txt");
-				// var connectionInfo = new PrivateKeyConnectionInfo(settings[0], settings[1], new PrivateKeyFile(settings[2], settings[3]));
-				var connectionInfo = new PasswordConnectionInfo(settings[0], settings[1], settings[2]);
-				
-				SshClient client = new SshClient(connectionInfo);
+#if USE_LIBSSHNET
+				var connection = new libsshnetConnection(settings[0], settings[1], settings[2]);
+				stream = connection.GetStream();
+#else
+				ConnectionInfo connectionInfo;
+				if (settings[0] == "password")
+					connectionInfo = new PasswordConnectionInfo(settings[1], settings[2], settings[3]);
+				else
+					connectionInfo = new PrivateKeyConnectionInfo(settings[1], settings[2], new PrivateKeyFile(settings[3], settings[4]));
+
+				client = new SshClient(connectionInfo);
 				client.Connect();
-				
+
+				client.KeepAliveInterval = TimeSpan.FromSeconds(20);
+
 				stream = client.CreateShellStream("xterm-256color", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
+#endif
+
 				writer = new BinaryWriter(stream, Encoding.UTF8);
 				var reader = new StreamReader(stream, Encoding.UTF8, false, 2048, true);
 
@@ -88,15 +110,19 @@ namespace npcook.Ssh
 			dataThread.IsBackground = true;
 			dataThread.Start();
 
-			(handler as XtermTerminalHandler).TitleChanged += (sender, e) =>
+			(handler as XtermTerminal).TitleChanged += (sender, e) =>
 			{
 				Dispatcher.Invoke(() => Title = e.Title);
 			};
+
+			Terminal_SizeChanged(this, null);
 
 			terminalControl.KeyDown += (sender, e) =>
 			{
 				Dispatcher.Invoke(() =>
 				{
+					bool handled = true;
+
 					// Convert to char array because BinaryWriter sends strings prefixed with their
 					// length
 					if (e.Key == Key.Tab)
@@ -126,7 +152,12 @@ namespace npcook.Ssh
 						else if (e.Key == Key.OemMinus && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
 							writer.Write((byte) 31);
 					}
+					else
+						handled = false;
 					writer.Flush();
+					e.Handled = handled;
+
+					terminalScroll.ScrollToBottom();
 				});
 			};
 
@@ -145,7 +176,15 @@ namespace npcook.Ssh
 					}
 					writer.Flush();
 				});
+
+				e.Handled = true;
 			};
+		}
+
+		private void Terminal_SizeChanged(object sender, EventArgs e)
+		{
+			terminalScroll.Width = terminalControl.Terminal.Size.Col * terminalControl.CharWidth + SystemParameters.ScrollWidth;
+			terminalScroll.Height = terminalControl.Terminal.Size.Row * terminalControl.CharHeight;
 		}
 
 		[StructLayout(LayoutKind.Sequential)]
@@ -163,7 +202,8 @@ namespace npcook.Ssh
 
 			if (msg == WM_SIZING)
 			{
-				var stops = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice.Transform(new System.Windows.Point(terminalControl.CharWidth, terminalControl.CharHeight));
+				var transformer = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;
+                var stops = transformer.Transform(new System.Windows.Point(terminalControl.CharWidth, terminalControl.CharHeight));
 				double horizontalStop = stops.X;
 				double verticalStop = stops.Y;
 
