@@ -166,7 +166,7 @@ namespace npcook.Terminal
 			int textIndex = 0;
 			while (textIndex < text.Length)
 			{
-				int lineEnd = text.IndexOfAny(new[] { '\r', '\n' }, textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col));
+				int lineEnd = text.IndexOfAny(new[] { '\r', '\n' }, textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col + 1));
 				bool controlFound = false;
 				if (lineEnd == -1)
 					lineEnd = text.Length;
@@ -193,6 +193,7 @@ namespace npcook.Terminal
 					{
 						textIndex++;
 						cursorCol = 0;
+						nextRow = false;
 					}
 					else if (c == '\n')
 					{

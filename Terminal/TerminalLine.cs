@@ -215,5 +215,36 @@ namespace npcook.Terminal
 		{
 			SetCharacters(index, new[] { c }, font);
 		}
+
+		public string GetCharacters(int index, int length)
+		{
+			var builder = new StringBuilder();
+			int totalIndex = 0;
+			foreach (var run in runs)
+			{
+				// Getting the middle of a run
+				if (index >= totalIndex && index + length < totalIndex + run.Text.Length)
+				{
+					builder.Append(run.Text, index - totalIndex, length);
+					break;
+				}
+				// Getting the ending of a run
+				if (index >= totalIndex && index < totalIndex + run.Text.Length)
+					builder.Append(run.Text, index - totalIndex, run.Text.Length - (index - totalIndex));
+				// Getting an entire run
+				else if (totalIndex >= index && index + length >= totalIndex + run.Text.Length)
+					builder.Append(run.Text);
+				// Deleting the beginning of a run
+				else if (totalIndex >= index)
+				{
+					builder.Append(run.Text, 0, index + length - totalIndex);
+					break;
+				}
+
+				totalIndex += run.Text.Length;
+			}
+
+			return builder.ToString();
+		}
 	}
 }
