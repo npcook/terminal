@@ -188,3 +188,6 @@ FakesAssemblies/
 GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
+
+# libsshnet lib files
+libsshnet/lib
