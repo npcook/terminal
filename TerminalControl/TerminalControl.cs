@@ -81,6 +81,7 @@ namespace npcook.Terminal.Controls
 					terminal.SizeChanged -= Terminal_SizeChanged;
 					terminal.LineShiftedUp -= Terminal_LineShiftedUp;
 					terminal.ScreenChanged -= Terminal_ScreenChanged;
+					(terminal as XtermTerminal).PrivateModeChanged += Terminal_PrivateModeChanged;
 				}
 				terminal = value;
 
@@ -102,6 +103,63 @@ namespace npcook.Terminal.Controls
 				terminal.SizeChanged += Terminal_SizeChanged;
 				terminal.LineShiftedUp += Terminal_LineShiftedUp;
 				terminal.ScreenChanged += Terminal_ScreenChanged;
+			}
+		}
+
+		private void Terminal_PrivateModeChanged(object sender, PrivateModeChangedEventArgs e)
+		{
+			if (e.Mode == XtermDecMode.BlinkCursor)
+				BlinkCursor = e.Value;
+			else if (e.Mode == XtermDecMode.ShowCursor)
+				ShowCursor = e.Value;
+		}
+
+		bool blinkCursor = true;
+		public bool BlinkCursor
+		{
+			get { return blinkCursor; }
+			set
+			{
+				blinkCursor = value;
+
+				Dispatcher.Invoke(() =>
+				{
+					if (BlinkCursor)
+					{
+						caret.Opacity = 1.0;
+						caretTimer.Start();
+					}
+					else
+					{
+						caretTimer.Stop();
+						caret.Opacity = 1.0;
+					}
+				});
+			}
+		}
+
+		bool showCursor = true;
+		public bool ShowCursor
+		{
+			get { return showCursor; }
+			set
+			{
+				showCursor = value;
+
+				Dispatcher.Invoke(() =>
+				{
+					if (ShowCursor)
+					{
+						caret.Opacity = 1.0;
+						if (BlinkCursor)
+							caretTimer.Start();
+					}
+					else
+					{
+						caretTimer.Stop();
+						caret.Opacity = 0.0;
+					}
+				});
 			}
 		}
 

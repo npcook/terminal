@@ -11,7 +11,7 @@ namespace npcook.Terminal
 	// Thanks to http://invisible-island.net/xterm/ctlseqs/ctlseqs.html for much of this information
 
 	// Contains xterm DEC private mode set values.  Values that end in an underscore are not implemented.
-	enum XtermDecMode
+	public enum XtermDecMode
 	{
 		AppCursorKeys = 1,		// Application cursor keys
 		USASCII_VT100_ = 2,		// USASCII for character sets G0-G3 & VT100 mode
@@ -56,6 +56,21 @@ namespace npcook.Terminal
 		UseAltScreenAndSaveCursor = 1049,	// Switches to alt screen, saves the cursor position, and clears the screen
 	}
 
+	public class PrivateModeChangedEventArgs : EventArgs
+	{
+		public XtermDecMode Mode
+		{ get; }
+
+		public bool Value
+		{ get; }
+
+		public PrivateModeChangedEventArgs(XtermDecMode mode, bool value)
+		{
+			Mode = mode;
+			Value = value;
+		}
+	}
+
 	public class XtermTerminal : TerminalBase, ITerminalHandler, IDisposable
 	{
 		public TerminalBase Terminal
@@ -81,9 +96,21 @@ namespace npcook.Terminal
 			}
 		}
 
+		void setPrivateMode(XtermDecMode mode, bool value)
+		{
+			if (Enum.IsDefined(typeof(XtermDecMode), mode))
+			{
+				privateModes[(XtermDecMode) mode] = value;
+
+				if (PrivateModeChanged != null)
+					PrivateModeChanged(this, new PrivateModeChangedEventArgs(mode, value));
+			}
+		}
+
 		AutoResetEvent dataProcessed = new AutoResetEvent(false);
 
 		public event EventHandler<TitleChangeEventArgs> TitleChanged;
+		public event EventHandler<PrivateModeChangedEventArgs> PrivateModeChanged;
 
 		public XtermTerminal()
 		{
@@ -169,6 +196,15 @@ namespace npcook.Terminal
 			return true;
 		}
 
+		public bool BlinkCursor
+		{ get { return privateModes[XtermDecMode.BlinkCursor]; } }
+
+		public bool ShowCursor
+		{ get { return privateModes[XtermDecMode.ShowCursor]; } }
+
+		public bool UnderlineCursor
+		{ get; private set; }
+
 		bool handleDecSet(int kind)
 		{
 			bool handled = true;
@@ -195,6 +231,8 @@ namespace npcook.Terminal
 					handled = false;
 					break;
 			}
+
+			setPrivateMode((XtermDecMode) kind, true);
 			return handled;
 		}
 
@@ -224,6 +262,9 @@ namespace npcook.Terminal
 					handled = false;
 					break;
 			}
+			
+			setPrivateMode((XtermDecMode) kind, false);
+
 			return handled;
 		}
 
@@ -257,11 +298,29 @@ namespace npcook.Terminal
 				switch (kind)
 				{
 					case 'h':
-						handled = handleDecSet(getAtOrDefault(codes, 0, 0));
+						foreach (int code in codes)
+							handled &= handleDecSet(code);
 						break;
 
 					case 'l':
-						handled = handleDecReset(getAtOrDefault(codes, 0, 0));
+						foreach (int code in codes)
+							handled &= handleDecReset(code);
+						break;
+
+					case 'r':
+						if (sequence[sequence.Length - 2] == ' ')
+						{
+							int cursorType = getAtOrDefault(codes, 0, 1);
+							if (cursorType == 3 || cursorType == 4)
+								UnderlineCursor = true;
+							else
+								UnderlineCursor = false;
+
+							if (cursorType == 0 || cursorType == 1 || cursorType == 3 || cursorType == 5)
+								privateModes[XtermDecMode.BlinkCursor] = true;
+							else
+								privateModes[XtermDecMode.BlinkCursor] = false;
+						}
 						break;
 
 					default:
