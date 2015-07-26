@@ -67,6 +67,25 @@ namespace npcook.Ssh
 			terminal.CurrentFont = handler.DefaultFont;
 
 			terminalControl.Terminal = terminal;
+
+			CommandBindings.Add(new CommandBinding(ApplicationCommands.Paste, (sender, e) =>
+			{
+				Dispatcher.Invoke(() =>
+				{
+					foreach (char c in Clipboard.GetText())
+					{
+						if (c == 4)
+							System.Diagnostics.Debugger.Break();
+						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
+							writer.Write(c);
+						else
+							System.Diagnostics.Debugger.Break();
+					}
+					writer.Flush();
+				});
+
+				e.Handled = true;
+			}));
 			
 			var dataThread = new Thread(() =>
 			{
