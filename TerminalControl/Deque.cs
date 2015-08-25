@@ -7,16 +7,19 @@ using System.Threading.Tasks;
 
 namespace npcook.Terminal.Controls
 {
-	class Deque<T> : ICollection, IEnumerable<T>, IReadOnlyCollection<T>
+	class Deque<T> : ICollection<T>, IEnumerable<T>, ICollection, IEnumerable, IReadOnlyCollection<T>
 	{
+		const int DefaultInitialSize = 10;
+		const int GrowthMultiplier = 2;
+
 		T[] backing;
 		int start;	// Index of first value
 		int end;	// Index of value one-past-the-end
-		int size;
+		int size;	// Actual size of collection
 
 		public Deque()
 		{
-			backing = new T[0];
+			backing = new T[DefaultInitialSize];
 			start = 0;
 			end = 0;
 			size = 0;
@@ -24,6 +27,9 @@ namespace npcook.Terminal.Controls
 
 		public Deque(int capacity)
 		{
+			if (capacity <= 0)
+				throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must be a positive integer");
+
 			backing = new T[capacity];
 			start = 0;
 			end = 0;
@@ -33,7 +39,7 @@ namespace npcook.Terminal.Controls
 		public void PushFront(T value)
 		{
 			if (size == backing.Length)
-				resize(size * 2);
+				resize(size * GrowthMultiplier);
 			start = (start - 1) % backing.Length;
 			backing[start] = value;
 			size++;
@@ -42,10 +48,15 @@ namespace npcook.Terminal.Controls
 		public void PushBack(T value)
 		{
 			if (size == backing.Length)
-				resize(size * 2);
+				resize(size * GrowthMultiplier);
 			backing[end] = value;
 			end = (end + 1) % backing.Length;
 			size++;
+		}
+
+		public void Add(T value)
+		{
+			PushBack(value);
 		}
 
 		public T PopFront()
@@ -102,6 +113,9 @@ namespace npcook.Terminal.Controls
 		public bool IsSynchronized
 		{ get { return false; } }
 
+		public bool IsReadOnly
+		{ get { return false; } }
+
 		IEnumerator IEnumerable.GetEnumerator()
 		{
 			return new Enumerator(this);
@@ -117,11 +131,74 @@ namespace npcook.Terminal.Controls
 			Array.Copy(backing, start, array, index, size);
 		}
 
+		public void CopyTo(T[] array, int index)
+		{
+			Array.Copy(backing, start, array, index, size);
+		}
+
 		public T this[int index]
 		{
 			get
 			{
+				if (index < 0 || index >= size)
+					throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
 				return backing[(start + index) % backing.Length];
+			}
+			set
+			{
+				if (index < 0 || index >= size)
+					throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
+				backing[(start + index) % backing.Length] = value;
+			}
+		}
+
+		public bool Contains(T value)
+		{
+			foreach (var item in this)
+			{
+				if (Comparer<T>.Default.Compare(item, value) == 0)
+					return true;
+			}
+			return false;
+		}
+
+		public void Insert(int index, T value)
+		{
+			Array.Copy(backing, index, backing, index + 1, size - index - 1);
+			backing[index] = value;
+		}
+
+		public bool Remove(T value)
+		{
+			int index = 0;
+			foreach (var item in this)
+			{
+				if (Comparer<T>.Default.Compare(item, value) == 0)
+					break;
+				index++;
+			}
+
+			if (index < size)
+			{
+				RemoveAt(index);
+				return true;
+			}
+			else
+				return false;
+		}
+
+		public void RemoveAt(int index)
+		{
+			if (index < 0 || index >= size)
+				throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
+
+			int actualIndex = (start + index) % backing.Length;
+			int copyCount = Math.Min(size - index - 2, backing.Length - actualIndex - 1);
+			Array.Copy(backing, actualIndex + 1, backing, actualIndex, copyCount);
+			if (copyCount < size - index - 1)
+			{
+				backing[backing.Length - 1] = backing[0];
+				Array.Copy(backing, 1, backing, 0, size - index - 1 - copyCount);
 			}
 		}
 
