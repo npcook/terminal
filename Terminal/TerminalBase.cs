@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,18 +18,44 @@ using System.Windows.Shapes;
 
 namespace npcook.Terminal
 {
-	public class LineShiftedUpEventArgs : EventArgs
+	public class LinesMovedEventArgs : EventArgs
 	{
-		public TerminalLine OldLine
+		public int OldIndex
 		{ get; }
 
-		public TerminalLine NewLine
+		public int NewIndex
 		{ get; }
 
-		public LineShiftedUpEventArgs(TerminalLine oldLine, TerminalLine newLine)
+		public int Count
+		{ get; }
+
+		public int RemovedLinesIndex
 		{
-			OldLine = oldLine;
-			NewLine = newLine;
+			get
+			{
+				if (NewIndex > OldIndex)
+					return OldIndex + Count;
+				else
+					return NewIndex;
+			}
+		}
+
+		public int AddedLinesIndex
+		{
+			get
+			{
+				if (NewIndex > OldIndex)
+					return OldIndex;
+				else
+					return NewIndex + Count;
+			}
+		}
+
+		public LinesMovedEventArgs(int oldIndex, int newIndex, int count)
+		{
+			OldIndex = oldIndex;
+			NewIndex = newIndex;
+			Count = count;
 		}
 	}
 
@@ -49,7 +76,7 @@ namespace npcook.Terminal
 		}
 	}
 
-	public class TerminalBase
+	public class TerminalBase : IDisposable
 	{
 		int cursorCol;
 		int cursorRow;
@@ -85,6 +112,13 @@ namespace npcook.Terminal
 			}
 		}
 
+		public Stream Stream
+		{ get; }
+
+		BinaryWriter writer;
+		public BinaryWriter Writer
+		{ get { return writer; } }
+
 		public TerminalFont CurrentFont
 		{ get; set; }
 
@@ -94,27 +128,30 @@ namespace npcook.Terminal
 		{ get; set; }
 
 		TerminalBuffer screenBuffer = new TerminalBuffer();
-		public IReadOnlyCollection<TerminalLine> Screen
+		public IReadOnlyList<TerminalLine> Screen
 		{ get { return screenBuffer.Lines; } }
 
 		TerminalBuffer altScreenBuffer = new TerminalBuffer();
-		public IReadOnlyCollection<TerminalLine> AltScreen
+		public IReadOnlyList<TerminalLine> AltScreen
 		{ get { return altScreenBuffer.Lines; } }
 
 		TerminalBuffer currentBuffer;
-		TerminalLine[] lines
+		protected TerminalLine[] lines
 		{ get { return currentBuffer.Lines; } }
 
-		public IReadOnlyCollection<TerminalLine> CurrentScreen
+		public IReadOnlyList<TerminalLine> CurrentScreen
 		{ get { return currentBuffer.Lines; } }
 
 		public event EventHandler<EventArgs> CursorPosChanged;
 		public event EventHandler<EventArgs> SizeChanged;
-		public event EventHandler<LineShiftedUpEventArgs> LineShiftedUp;
+		public event EventHandler<LinesMovedEventArgs> LinesMoved;
 		public event EventHandler<EventArgs> ScreenChanged;
 
-		public TerminalBase()
+		public TerminalBase(IStreamNotifier streamNotifier)
 		{
+			Stream = streamNotifier.Stream;
+			writer = new BinaryWriter(streamNotifier.Stream, Encoding.UTF8, true);
+
 			currentBuffer = screenBuffer;
 
 			AutoWrapMode = true;
@@ -145,9 +182,26 @@ namespace npcook.Terminal
 				Array.Copy(lines, 1, lines, 0, lines.Length - 1);
 				lines[lines.Length - 1] = newLine;
 
-				if (LineShiftedUp != null)
-					LineShiftedUp(this, new LineShiftedUpEventArgs(oldLine, newLine));
+				if (LinesMoved != null)
+					LinesMoved(this, new LinesMovedEventArgs(1, 0, Size.Row - 1));
 			}
+		}
+
+		public void MoveLines(int index, int newIndex, int count)
+		{
+			int addIndex;
+			if (newIndex > index)
+				addIndex = index;
+			else
+				addIndex = newIndex + count;
+
+			int addedCount = Math.Abs(index - newIndex);
+			Array.Copy(lines, index, lines, newIndex, count);
+			for (int i = 0; i < addedCount; ++i)
+				lines[addIndex + i] = new TerminalLine();
+
+			if (LinesMoved != null)
+				LinesMoved(this, new LinesMovedEventArgs(index, newIndex, count));
 		}
 
 		public void EraseCharacters(int length, bool advanceCursor = true)
@@ -216,5 +270,27 @@ namespace npcook.Terminal
 			if (CursorPosChanged != null && advanceCursor)
 				CursorPosChanged(this, EventArgs.Empty);
 		}
+
+		#region IDisposable Support
+		private bool disposedValue = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing)
+		{
+			if (!disposedValue)
+			{
+				if (disposing)
+				{
+					writer.Dispose();
+				}
+
+				disposedValue = true;
+			}
+		}
+
+		public void Dispose()
+		{
+			Dispose(true);
+		}
+		#endregion
 	}
 }

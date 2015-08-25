@@ -13,7 +13,7 @@ namespace npcook.Terminal.Controls
 	class TerminalLineVisual : DrawingVisual
 	{
 		// The <c>TerminalControl</c> this visual is a child of	
-		public TerminalControl Terminal
+		public TerminalControlCore Terminal
 		{ get; }
 
 		// The line this visual represents
@@ -38,7 +38,7 @@ namespace npcook.Terminal.Controls
 		internal bool DrawRunBoxes
 		{ get; set; }
 
-		public TerminalLineVisual(TerminalControl terminal, TerminalLine line)
+		public TerminalLineVisual(TerminalControlCore terminal, TerminalLine line)
 		{
 			this.Terminal = terminal;
 			this.Line = line;
@@ -82,7 +82,7 @@ namespace npcook.Terminal.Controls
 					foreground = Terminal.GetFontForegroundBrush(run.Font);
 					background = Terminal.GetFontBackgroundBrush(run.Font);
 				}
-
+				
 				var ft = new FormattedText(
 					run.Text,
 					System.Globalization.CultureInfo.CurrentUICulture,

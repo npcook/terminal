@@ -60,14 +60,14 @@
     <Reference Include="PresentationFramework" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BlockingReader.cs" />
+    <Compile Include="IStreamNotifier.cs" />
     <Compile Include="TerminalBase.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="TerminalBuffer.cs" />
     <Compile Include="TerminalColors.cs" />
     <Compile Include="TerminalFont.cs" />
-    <Compile Include="TerminalHandler.cs" />
+    <Compile Include="ITerminalHandler.cs" />
     <Compile Include="TerminalLine.cs" />
     <Compile Include="TerminalRun.cs" />
     <Compile Include="XtermTerminal.cs" />

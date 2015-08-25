@@ -71,7 +71,166 @@ namespace npcook.Terminal
 		}
 	}
 
-	public class XtermTerminal : TerminalBase, ITerminalHandler, IDisposable
+	enum SequenceType
+	{
+		Text,
+		Csi,
+		Osc,
+		SingleEscape,
+		ControlCode,
+	}
+
+	class SequenceReceivedEventArgs : EventArgs
+	{
+		public SequenceType Type
+		{ get; }
+
+		public string Sequence
+		{ get; }
+
+		public SequenceReceivedEventArgs(SequenceType type, string sequence)
+		{
+			Type = type;
+			Sequence = sequence;
+		}
+	}
+
+	class XtermStreamParser : IDisposable
+	{
+		enum State
+		{
+			Text,
+			Escape,
+			Csi,
+			Osc,
+			Escape2,
+		}
+		
+		StreamReader reader;
+		StringBuilder partial = new StringBuilder();
+		State state = State.Text;
+
+		public event EventHandler<SequenceReceivedEventArgs> SequenceReceived;
+
+		public XtermStreamParser(IStreamNotifier notifier)
+		{
+			reader = new StreamReader(notifier.Stream, Encoding.UTF8, false, 2048, true);
+			notifier.DataAvailable += Notifier_DataAvailable;
+		}
+
+		private void Notifier_DataAvailable(object sender, EventArgs e)
+		{
+			while (!reader.EndOfStream)
+				readChar();
+			if (state == State.Text)
+				endSequence(SequenceType.Text);
+		}
+
+		void endSequence(SequenceType type)
+		{
+			if (partial.Length > 0)
+			{
+				if (SequenceReceived != null)
+					SequenceReceived(this, new SequenceReceivedEventArgs(type, partial.ToString()));
+				partial.Clear();
+			}
+		}
+
+		void discardSequence()
+		{
+			partial.Clear();
+		}
+
+		void readChar()
+		{
+			char c = (char) reader.Read();
+			switch (state)
+			{
+				case State.Text:
+					if (!char.IsControl(c) || c == '\r')
+						partial.Append(c);
+					else if (c == '\x1b')
+					{
+						endSequence(SequenceType.Text);
+						state = State.Escape;
+					}
+					else
+					{
+						endSequence(SequenceType.Text);
+						partial.Append(c);
+						endSequence(SequenceType.ControlCode);
+					}
+					break;
+
+				case State.Escape:
+					if (c == '[')
+						state = State.Csi;
+					else if (c == ']')
+						state = State.Osc;
+					else if (char.IsLetter(c))
+					{
+						partial.Append(c);
+						endSequence(SequenceType.SingleEscape);
+					}
+					else
+					{
+						partial.Append(c);
+						state = State.Escape2;
+					}
+					break;
+
+				case State.Escape2:
+					discardSequence();
+					state = State.Text;
+					break;
+
+				case State.Csi:
+					partial.Append(c);
+					if (c >= 64 && c <= 126)
+					{
+						endSequence(SequenceType.Csi);
+						state = State.Text;
+					}
+                    break;
+
+				case State.Osc:
+					if (c == 7)
+					{
+						endSequence(SequenceType.Osc);
+						state = State.Text;
+					}
+					else
+						partial.Append(c);
+					break;
+			}
+		}
+
+		#region IDisposable Support
+		private bool disposedValue = false; // To detect redundant calls
+
+		protected virtual void Dispose(bool disposing)
+		{
+			if (!disposedValue)
+			{
+				if (disposing)
+				{
+					reader.Dispose();
+				}
+
+				reader = null;
+
+				disposedValue = true;
+			}
+		}
+
+		public void Dispose()
+		{
+			Dispose(true);
+		}
+		#endregion
+	}
+
+	public class XtermTerminal : TerminalBase, ITerminalHandler
 	{
 		public TerminalBase Terminal
 		{ get { return this; } }
@@ -79,11 +238,8 @@ namespace npcook.Terminal
 		Dictionary<XtermDecMode, bool> privateModes = new Dictionary<XtermDecMode, bool>();
 
 		Point savedCursorPos;
-		StringBuilder runBuilder = new StringBuilder();
 		TerminalFont font;
-
-		Thread processingThread;
-		BlockingReader reader = new BlockingReader();
+		XtermStreamParser parser;
 
 		TerminalFont defaultFont;
 		public TerminalFont DefaultFont
@@ -107,12 +263,11 @@ namespace npcook.Terminal
 			}
 		}
 
-		AutoResetEvent dataProcessed = new AutoResetEvent(false);
-
 		public event EventHandler<TitleChangeEventArgs> TitleChanged;
 		public event EventHandler<PrivateModeChangedEventArgs> PrivateModeChanged;
 
-		public XtermTerminal()
+		public XtermTerminal(IStreamNotifier streamNotifier)
+			: base(streamNotifier)
 		{
 			foreach (var key in Enum.GetValues(typeof(XtermDecMode)).Cast<XtermDecMode>())
 				privateModes.Add(key, false);
@@ -121,20 +276,43 @@ namespace npcook.Terminal
 			privateModes[XtermDecMode.UseNormalScreen] = true;
 			privateModes[XtermDecMode.Wraparound] = true;
 
-			processingThread = new Thread(handleInputCore);
-			processingThread.IsBackground = true;
-			processingThread.Name = "XtermTerminal::handleInputCore";
-			processingThread.Start();
+			parser = new XtermStreamParser(streamNotifier);
+			parser.SequenceReceived += Parser_SequenceReceived;
 		}
 
-		void endRun()
+		private void Parser_SequenceReceived(object sender, SequenceReceivedEventArgs e)
 		{
-			if (runBuilder.Length > 0)
+			switch (e.Type)
 			{
-				//				System.Diagnostics.Debug.WriteLine("Read run: " + runBuilder.ToString());
-				string text = runBuilder.ToString();
-				SetCharacters(text, font);
-				runBuilder.Clear();
+				case SequenceType.Text:
+					Terminal.SetCharacters(e.Sequence, font);
+					break;
+
+				case SequenceType.Csi:
+					handleCsi(e.Sequence);
+					break;
+
+				case SequenceType.Osc:
+					handleOsc(e.Sequence);
+					break;
+
+				case SequenceType.SingleEscape:
+					handleSingleEscape(e.Sequence[0]);
+					break;
+
+				case SequenceType.ControlCode:
+					if (e.Sequence[0] == '\n')
+					{
+						lineFeed(false);
+					}
+					else if (e.Sequence[0] == '\b')
+					{
+						if (CursorPos.Col == 0)
+							CursorPos = new Point(Size.Col - 1, CursorPos.Row - 1);
+						else
+							CursorPos = new Point(CursorPos.Col - 1, CursorPos.Row);
+					}
+					break;
 			}
 		}
 
@@ -145,54 +323,72 @@ namespace npcook.Terminal
 			return arr[index].GetValueOrDefault(defaultValue);
 		}
 
-		bool handleCsiSgr(int sgr, int?[] codes)
+		bool handleCsiSgr(int?[] codes)
 		{
-			if (sgr == 0)
-				font = DefaultFont;
-			else if (sgr == 1)
-				font.Bold = true;
-			else if (sgr == 2)
-				font.Faint = true;
-			else if (sgr == 3)
-				font.Italic = true;
-			else if (sgr == 4)
-				font.Underline = true;
-			else if (sgr == 7)
-				font.Inverse = true;
-			else if (sgr == 8)
-				font.Hidden = true;
-			else if (sgr == 9)
-				font.Strike = true;
-			else if (sgr == 22)
-				font.Bold = false;
-			else if (sgr == 23)
-				font.Italic = false;
-			else if (sgr == 24)
-				font.Underline = false;
-			else if (sgr == 27)
-				font.Inverse = false;
-			else if (sgr == 28)
-				font.Hidden = false;
-			else if (sgr == 29)
-				font.Strike = false;
-			else if (sgr >= 30 && sgr <= 37)
-				font.Foreground = TerminalColors.GetBasicColor(sgr - 30);
-			else if (sgr == 38 && codes[1] == 5)
-				font.Foreground = TerminalColors.GetXtermColor(getAtOrDefault(codes, 2, 0));
-			else if (sgr == 39)
-				font.Foreground = DefaultFont.Foreground;
-			else if (sgr >= 40 && sgr <= 47)
-				font.Background = TerminalColors.GetBasicColor(sgr - 40);
-			else if (sgr == 48 && codes[1] == 5)
-				font.Background = TerminalColors.GetXtermColor(getAtOrDefault(codes, 2, 0));
-			else if (sgr == 49)
-				font.Background = DefaultFont.Background;
-			else if (sgr >= 90 && sgr <= 97)
-				font.Foreground = TerminalColors.GetBasicColor(sgr - 90);
-			else if (sgr >= 100 && sgr <= 107)
-				font.Background = TerminalColors.GetBasicColor(sgr - 100);
+			if (codes.Length == 0)
+				codes = new int?[] { 0 };
 			else
-				return false;
+			{
+				// I don't know how these would be combined with other codes, so do them here
+				if (codes[0] == 38 && getAtOrDefault(codes, 1, 0) == 5)
+				{
+					font.Foreground = TerminalColors.GetXtermColor(getAtOrDefault(codes, 2, 0));
+					return true;
+				}
+				else if (codes[0] == 48 && getAtOrDefault(codes, 1, 0) == 5)
+				{
+					font.Background = TerminalColors.GetXtermColor(getAtOrDefault(codes, 2, 0));
+					return true;
+				}
+			}
+
+			foreach (int? code in codes)
+			{
+				int sgr = code.GetValueOrDefault(0);
+
+				if (sgr == 0)
+					font = DefaultFont;
+				else if (sgr == 1)
+					font.Bold = true;
+				else if (sgr == 2)
+					font.Faint = true;
+				else if (sgr == 3)
+					font.Italic = true;
+				else if (sgr == 4)
+					font.Underline = true;
+				else if (sgr == 7)
+					font.Inverse = true;
+				else if (sgr == 8)
+					font.Hidden = true;
+				else if (sgr == 9)
+					font.Strike = true;
+				else if (sgr == 22)
+					font.Bold = false;
+				else if (sgr == 23)
+					font.Italic = false;
+				else if (sgr == 24)
+					font.Underline = false;
+				else if (sgr == 27)
+					font.Inverse = false;
+				else if (sgr == 28)
+					font.Hidden = false;
+				else if (sgr == 29)
+					font.Strike = false;
+				else if (sgr >= 30 && sgr <= 37)
+					font.Foreground = TerminalColors.GetBasicColor(sgr - 30);
+				else if (sgr == 39)
+					font.Foreground = DefaultFont.Foreground;
+				else if (sgr >= 40 && sgr <= 47)
+					font.Background = TerminalColors.GetBasicColor(sgr - 40);
+				else if (sgr == 49)
+					font.Background = DefaultFont.Background;
+				else if (sgr >= 90 && sgr <= 97)
+					font.Foreground = TerminalColors.GetBasicColor(sgr - 90);
+				else if (sgr >= 100 && sgr <= 107)
+					font.Background = TerminalColors.GetBasicColor(sgr - 100);
+				else
+					return false;
+			}
 			return true;
 		}
 
@@ -262,19 +458,19 @@ namespace npcook.Terminal
 					handled = false;
 					break;
 			}
-			
+
 			setPrivateMode((XtermDecMode) kind, false);
 
 			return handled;
 		}
 
-		bool handleCsi()
+		int scrollRegionTop = 0;
+		int scrollRegionBottom = int.MaxValue;
+
+		bool handleCsi(string sequence)
 		{
 			bool handled = true;
 
-			endRun();
-
-			string sequence = reader.ReadUntil(ch => ch >= 64 && ch <= 126);
 			bool isPrivate = sequence[0] == '?';
 			char kind = sequence.Last();
 			int?[] codes = null;
@@ -333,7 +529,7 @@ namespace npcook.Terminal
 				switch (kind)
 				{
 					case 'm':
-						handled = handleCsiSgr(getAtOrDefault(codes, 0, 0), codes);
+						handled = handleCsiSgr(codes);
 						break;
 
 					case 'A':
@@ -439,11 +635,31 @@ namespace npcook.Terminal
 						CursorPos = oldCursorPos;
 						break;
 
+					case 'M':
+						{
+							int rows = getAtOrDefault(codes, 0, 1);
+							for (int i = CursorPos.Row; i < scrollRegionBottom; ++i)
+							{
+								lines[i].DeleteCharacters(0, lines[i].Length);
+								if (i + rows < scrollRegionBottom)
+								{
+									foreach (var run in lines[i + rows].Runs)
+									{
+										lines[i].SetCharacters(lines[i].Length, run.Text, run.Font);
+									}
+								}
+							}
+						}
+						break;
+
 					case 'P':
 						DeleteCharacters(getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'r':
+						scrollRegionTop = getAtOrDefault(codes, 0, 1) - 1;
+						scrollRegionBottom = getAtOrDefault(codes, 1, Size.Row);
+						CursorPos = new Point(0, 0);
 						break;
 
 					case 's':
@@ -465,11 +681,9 @@ namespace npcook.Terminal
 			return handled;
 		}
 
-		bool handleOsc()
+		bool handleOsc(string sequence)
 		{
 			bool handled = true;
-			string sequence = reader.ReadUntil(ch => ch == 7);
-			sequence = sequence.Substring(0, sequence.Length - 1);
 			int kind = int.Parse(sequence.Substring(0, sequence.IndexOf(';')));
 			switch (kind)
 			{
@@ -492,13 +706,15 @@ namespace npcook.Terminal
 			bool handled = true;
 			string sequence = new string(kind, 1);
 			if (kind == '=')
-			{
 				applicationKeypad = true;
-			}
 			else if (kind == '>')
-			{
 				applicationKeypad = false;
-			}
+			else if (kind == '7')
+				savedCursorPos = CursorPos;
+			else if (kind == '8')
+				CursorPos = savedCursorPos;
+			else if (kind == 'M')
+				lineFeed(true);
 			else
 				handled = false;
 			System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ {1}", handled ? "X" : " ", sequence));
@@ -506,93 +722,50 @@ namespace npcook.Terminal
 			return handled;
 		}
 
-		void handleInputCore()
+		void lineFeed(bool reverse)
 		{
-			while (true)
+			int actualTop = Math.Max(scrollRegionTop, 0);
+			int actualBottom = Math.Min(scrollRegionBottom, Terminal.Size.Row);
+			if (reverse)
 			{
-				if (!reader.DataAvailable)
+				int newRow = CursorPos.Row - 1;
+				if (newRow < actualTop)
 				{
-					endRun();
-					dataProcessed.Set();
-					reader.Wait(TimeSpan.FromMilliseconds(500));
-				}
-
-				char c = reader.ReadOne();
-				if (!char.IsControl(c) || c == '\r' || c == '\n')
-					runBuilder.Append(c);
-				else if (c != '\x1b')
-				{
-					if (c == '\b')
-					{
-						endRun();
-
-						if (CursorPos.Col == 0)
-							CursorPos = new Point(Size.Col - 1, CursorPos.Row - 1);
-						else
-							CursorPos = new Point(CursorPos.Col - 1, CursorPos.Row);
-					}
+					MoveLines(actualTop, actualTop + 1, actualBottom - actualTop - 1);
 				}
 				else
-				{
-					bool handled = true;
-
-					char escapeKind = reader.ReadOne();
-					string sequence = "";
-					if (escapeKind == '[')
-						handled = handleCsi();
-					else if (escapeKind == ']')
-						handled = handleOsc();
-					else if (escapeKind == '(')
-					{
-						sequence = new string(reader.ReadOne(), 1);
-
-						if (sequence != "B")
-							handled = false;
-						System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ ( {1}", handled ? "X" : " ", sequence));
-					}
-					else
-						handled = handleSingleEscape(escapeKind);
-				}
+					CursorPos = new Point(CursorPos.Col, newRow);
 			}
-		}
-
-		bool busy = false;
-		public void HandleInput(StreamReader reader)
-		{
-			if (busy)
-				System.Diagnostics.Debugger.Break();
-			busy = true;
-
-			dataProcessed.Reset();
-			this.reader.Write(reader);
-			dataProcessed.WaitOne(TimeSpan.FromMilliseconds(500));
-
-			busy = false;
+			else
+			{
+				int newRow = CursorPos.Row + 1;
+				if (newRow >= actualBottom)
+				{
+					MoveLines(actualTop + 1, actualTop, actualBottom - actualTop - 1);
+				}
+				else
+					CursorPos = new Point(CursorPos.Col, newRow);
+			}
 		}
 
 		#region IDisposable Support
 		private bool disposedValue = false; // To detect redundant calls
 
-		protected virtual void Dispose(bool disposing)
+		protected new virtual void Dispose(bool disposing)
 		{
+			base.Dispose(disposing);
+
 			if (!disposedValue)
 			{
 				if (disposing)
 				{
-					dataProcessed.Dispose();
-					reader.Dispose();
+					parser.Dispose();
 				}
 
-				dataProcessed = null;
-				reader = null;
+				parser = null;
 
 				disposedValue = true;
 			}
-		}
-
-		public void Dispose()
-		{
-			Dispose(true);
 		}
 		#endregion
 	}

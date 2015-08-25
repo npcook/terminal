@@ -26,7 +26,5 @@ namespace npcook.Terminal
 
 		TerminalFont DefaultFont
 		{ get; set; }
-
-		void HandleInput(StreamReader reader);
 	}
 }

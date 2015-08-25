@@ -23,6 +23,63 @@ using npcook.Terminal.Controls;
 
 namespace npcook.Ssh
 {
+	public abstract class Authentication
+	{
+		internal Authentication()
+		{ }
+	}
+
+	public sealed class PasswordAuthentication : Authentication
+	{
+		public string Password
+		{ get; }
+
+		public PasswordAuthentication(string password)
+		{
+			Password = password;
+		}
+	}
+
+	public sealed class KeyAuthentication : Authentication
+	{
+		public Stream Key
+		{ get; }
+
+		public string Passphrase
+		{ get; }
+
+		public KeyAuthentication(Stream key, string passphrase)
+		{
+			Key = key;
+			Passphrase = passphrase;
+		}
+	}
+
+	class ShellStreamNotifier : IStreamNotifier
+	{
+		TerminalControl terminal;
+
+		public Stream Stream
+		{ get; }
+
+		public event EventHandler DataAvailable;
+
+		public ShellStreamNotifier(TerminalControl terminal, ShellStream stream)
+		{
+			this.terminal = terminal;
+			Stream = stream;
+			stream.DataReceived += Stream_DataReceived;
+		}
+
+		private void Stream_DataReceived(object sender, Renci.SshNet.Common.ShellDataEventArgs e)
+		{
+			terminal.BeginChange();
+			if (DataAvailable != null)
+				DataAvailable(this, EventArgs.Empty);
+			terminal.EndChange();
+		}
+	}
+
 	/// <summary>
 	/// Interaction logic for MainWindow.xaml
 	/// </summary>
@@ -36,57 +93,13 @@ namespace npcook.Ssh
 		SshClient client;
 		ShellStream stream;
 #endif
-		BinaryWriter writer;
 		ITerminalHandler handler;
-		public MainWindow()
+
+		public void Connect(string serverAddress, int serverPort, string username, IEnumerable<Authentication> authentications)
 		{
-			InitializeComponent();
+			const int TerminalCols = 160;
+			const int TerminalRows = 40;
 
-			IsVisibleChanged += (sender, e) =>
-			{
-				if (hwndSource == null)
-				{
-					hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-					hwndSource.AddHook(HwndHook);
-				}
-			};
-
-			var terminal = new XtermTerminal();
-			handler = terminal;
-
-			terminalControl.SizeChanged += (sender, e) =>
-			{
-				terminalScroll.ScrollToBottom();
-			};
-
-			terminal.Size = new Terminal.Point(160, 40);
-			handler.DefaultFont = new TerminalFont()
-			{
-				Foreground = TerminalColors.GetBasicColor(7)
-			};
-			terminal.CurrentFont = handler.DefaultFont;
-
-			terminalControl.Terminal = terminal;
-
-			CommandBindings.Add(new CommandBinding(ApplicationCommands.Paste, (sender, e) =>
-			{
-				Dispatcher.Invoke(() =>
-				{
-					foreach (char c in Clipboard.GetText())
-					{
-						if (c == 4)
-							System.Diagnostics.Debugger.Break();
-						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
-							writer.Write(c);
-						else
-							System.Diagnostics.Debugger.Break();
-					}
-					writer.Flush();
-				});
-
-				e.Handled = true;
-			}));
-			
 			var dataThread = new Thread(() =>
 			{
 				var settings = File.ReadAllLines(@"X:\settings.txt");
@@ -105,12 +118,28 @@ namespace npcook.Ssh
 
 				client.KeepAliveInterval = TimeSpan.FromSeconds(20);
 
-				stream = client.CreateShellStream("xterm-256color", (uint) terminal.Size.Col, (uint) terminal.Size.Row, 0, 0, 1000);
+				stream = client.CreateShellStream("xterm-256color", (uint) TerminalCols, (uint) TerminalRows, 0, 0, 1000);
+
+				Dispatcher.Invoke(() =>
+				{
+					terminalControl.Terminal = new XtermTerminal(new ShellStreamNotifier(terminalControl, stream))
+					{
+						Size = new Terminal.Point(TerminalCols, TerminalRows),
+						DefaultFont = new TerminalFont()
+						{
+							Foreground = TerminalColors.GetBasicColor(7)
+						}
+					};
+					handler = terminalControl.Terminal;
+					terminalControl.Terminal.TitleChanged += (sender, e) =>
+					{
+						Dispatcher.Invoke(() => Title = e.Title);
+					};
+
+					Terminal_SizeChanged(this, null);
+				});
 #endif
-
-				writer = new BinaryWriter(stream, Encoding.UTF8);
-				var reader = new StreamReader(stream, Encoding.UTF8, false, 2048, true);
-
+				/*
 				stream.DataReceived += (sender, e) =>
 				{
 					try
@@ -123,87 +152,31 @@ namespace npcook.Ssh
 					{
 						System.Diagnostics.Debugger.Break();
 					}
-				};
+				};*/
 			});
 			dataThread.Name = "Data Thread";
 			dataThread.IsBackground = true;
 			dataThread.Start();
+		}
 
-			(handler as XtermTerminal).TitleChanged += (sender, e) =>
+		public MainWindow()
+		{
+			InitializeComponent();
+
+			IsVisibleChanged += (sender, e) =>
 			{
-				Dispatcher.Invoke(() => Title = e.Title);
-			};
-
-			Terminal_SizeChanged(this, null);
-
-			terminalControl.KeyDown += (sender, e) =>
-			{
-				Dispatcher.Invoke(() =>
+				if (hwndSource == null)
 				{
-					bool handled = true;
-
-					// Convert to char array because BinaryWriter sends strings prefixed with their
-					// length
-					if (e.Key == Key.Tab)
-						writer.Write('\t');
-					else if (e.Key == Key.Left)
-						writer.Write("\x1b[D".ToCharArray());
-					else if (e.Key == Key.Right)
-						writer.Write("\x1b[C".ToCharArray());
-					else if (e.Key == Key.Up)
-						writer.Write("\x1b[A".ToCharArray());
-					else if (e.Key == Key.Down)
-						writer.Write("\x1b[B".ToCharArray());
-					else if (e.Key == Key.Delete)
-						writer.Write("\x1b[3~".ToCharArray());
-					else if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
-					{
-						if (e.Key >= Key.A && e.Key <= Key.Z)
-							writer.Write((byte) (e.Key - Key.A + 1));
-						else if (e.Key == Key.OemOpenBrackets)
-							writer.Write((byte) 27);
-						else if (e.Key == Key.Oem5)
-							writer.Write((byte) 28);
-						else if (e.Key == Key.OemCloseBrackets)
-							writer.Write((byte) 29);
-						else if (e.Key == Key.D6 && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
-							writer.Write((byte) 30);
-						else if (e.Key == Key.OemMinus && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
-							writer.Write((byte) 31);
-					}
-					else
-						handled = false;
-					writer.Flush();
-					e.Handled = handled;
-
-					terminalScroll.ScrollToBottom();
-				});
-			};
-
-			terminalControl.TextInput += (sender, e) =>
-			{
-				Dispatcher.Invoke(() =>
-				{
-					foreach (char c in e.Text)
-					{
-						if (c == 4)
-							System.Diagnostics.Debugger.Break();
-						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
-							writer.Write(c);
-						else
-							System.Diagnostics.Debugger.Break();
-					}
-					writer.Flush();
-				});
-
-				e.Handled = true;
+					hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+					hwndSource.AddHook(HwndHook);
+				}
 			};
 		}
 
 		private void Terminal_SizeChanged(object sender, EventArgs e)
 		{
-			terminalScroll.Width = terminalControl.Terminal.Size.Col * terminalControl.CharWidth + SystemParameters.ScrollWidth;
-			terminalScroll.Height = terminalControl.Terminal.Size.Row * terminalControl.CharHeight;
+			terminalControl.Width = terminalControl.Terminal.Size.Col * terminalControl.CharWidth + SystemParameters.ScrollWidth;
+			terminalControl.Height = terminalControl.Terminal.Size.Row * terminalControl.CharHeight;
 		}
 
 		[StructLayout(LayoutKind.Sequential)]
@@ -243,6 +216,15 @@ namespace npcook.Ssh
 
 		void OnKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
 		{
+		}
+
+		private void connect_click(object sender, RoutedEventArgs e)
+		{
+			var dialog = new ConnectionDialog();
+			if (dialog.ShowDialog().GetValueOrDefault(false))
+			{
+				Connect(null, 0, null, null);
+			}
 		}
 	}
 }

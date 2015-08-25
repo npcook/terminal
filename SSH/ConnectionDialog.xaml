@@ -5,39 +5,58 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:npcook.Ssh"
         mc:Ignorable="d"
-        Title="ConnectionDialog" Height="300" Width="300">
+        Title="Connection Settings" SizeToContent="WidthAndHeight">
     <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="0.7*"/>
-            <ColumnDefinition Width="0.3*"/>
-        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="5"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="5"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Vertical" Grid.Column="0" Grid.Row="0">
-            <Label Content="Server address"/>
-            <TextBox Margin="5" />
-        </StackPanel>
-        <StackPanel Orientation="Vertical" Grid.Column="1" Grid.Row="0">
-            <Label Content="Port"/>
-            <TextBox Margin="5" />
-        </StackPanel>
-        <StackPanel Orientation="Vertical" Grid.Column="0" Grid.Row="1">
-            <Label Content="Username"/>
-            <TextBox Margin="5" />
-        </StackPanel>
-        <StackPanel Orientation="Vertical" Grid.Column="0" Grid.Row="2">
-            <RadioButton GroupName="authType" Content="Password"/>
-            <PasswordBox Margin="5"/>
-        </StackPanel>
-        <StackPanel Orientation="Vertical" Grid.Column="0" Grid.Row="3">
-            <RadioButton GroupName="authType" Content="Private key file"/>
-            <TextBox Margin="5"/>
-            <PasswordBox Margin="5"/>
+
+        <GroupBox Header="Server" Grid.Row="0" Grid.Column="0" Padding="5,5,5,5">
+            <StackPanel Orientation="Horizontal">
+                <Label Content="Address" Target="{Binding ElementName=serverAddress}" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <TextBox x:Name="serverAddress" Width="200" VerticalAlignment="Center"/>
+                <Label Content="Port" Margin="10,0,0,0" Target="{Binding ElementName=serverPort}" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <TextBox x:Name="serverPort" Width="50" VerticalAlignment="Center" MaxLength="6"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Authentication" Grid.Row="2" Grid.Column="0" Padding="5">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="5"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="5"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="5"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Label Content="Username" Target="{Binding ElementName=username}" Grid.Row="0" Grid.Column="0" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <TextBox x:Name="username" Width="150" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <Label Content="Password" Target="{Binding ElementName=password}" Grid.Row="2" Grid.Column="0" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <PasswordBox x:Name="password" Width="150" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <Label Content="Key File" Target="{Binding ElementName=keyPath}" Grid.Row="4" Grid.Column="0" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <StackPanel Orientation="Horizontal" Grid.Row="4" Grid.Column="1" HorizontalAlignment="Left">
+                    <TextBox x:Name="keyPath" Width="150" VerticalAlignment="Center" />
+                    <Button Content="Browse" Width="70" Click="keyPathBrowse_Click" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Label Content="Key Passphrase" Target="{Binding ElementName=keyPassphrase}" Grid.Row="6" Grid.Column="0" Padding="0,0,5,0" Height="{Binding RelativeSource={x:Static RelativeSource.Self},Path=Target.ActualHeight}"/>
+                <PasswordBox x:Name="keyPassphrase" Width="150" Grid.Row="6" Grid.Column="1" HorizontalAlignment="Left"
+                             VerticalAlignment="Center"/>
+            </Grid>
+        </GroupBox>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Row="4">
+            <Button x:Name="connectButton" Content="Connect" Width="75" Margin="0,0,5,0" Click="connect_Click"/>
+            <Button x:Name="closeButton" Content="Close" Width="75" Click="close_Click"/>
         </StackPanel>
     </Grid>
 </Window>
