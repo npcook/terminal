@@ -2,8 +2,6 @@
 
 #include "stdafx.h"
 
-#include "libsshnet.h"
-
 namespace npcook {
 	namespace libsshnet {
 		Session::Session()

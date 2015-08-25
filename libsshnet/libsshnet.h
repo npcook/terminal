@@ -4,8 +4,12 @@
 
 #pragma managed(push, off)
 
+#pragma warning(push)
+#pragma warning(disable: 4267)
+
 #include "libssh/libsshpp.hpp"
 
+#pragma warning(pop)
 #pragma managed(pop)
 
 using namespace System;
