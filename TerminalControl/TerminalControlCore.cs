@@ -520,10 +520,7 @@ namespace npcook.Terminal.Controls
 		internal SolidColorBrush GetFontBackgroundBrush(TerminalFont font)
 		{
 			var color = font.Background;
-			if (font.Bold)
-				return GetBrush(TerminalColors.MakeBold(color));
-			else
-				return GetBrush(color);
+			return GetBrush(color);
 		}
 
 		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
