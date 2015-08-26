@@ -95,7 +95,7 @@ namespace npcook.Terminal.Controls
 		public double CharHeight
 		{ get { return impl.CharHeight; } }
 
-		protected override void OnKeyDown(KeyEventArgs e)
+		protected override void OnPreviewKeyDown(KeyEventArgs e)
 		{
 			bool handled = true;
 
@@ -142,7 +142,7 @@ namespace npcook.Terminal.Controls
 			e.Handled = handled;
 		}
 
-		protected override void OnTextInput(TextCompositionEventArgs e)
+		protected override void OnPreviewTextInput(TextCompositionEventArgs e)
 		{
 			foreach (char c in e.Text)
 			{
