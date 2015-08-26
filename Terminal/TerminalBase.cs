@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -189,6 +190,10 @@ namespace npcook.Terminal
 
 		public void MoveLines(int index, int newIndex, int count)
 		{
+			Contract.Requires(index >= 0 && index < Size.Row);
+			Contract.Requires(newIndex >= 0 && newIndex < Size.Row);
+			Contract.Requires(index + count < Size.Row && newIndex + count < Size.Row);
+
 			int addIndex;
 			if (newIndex > index)
 				addIndex = index;
@@ -206,16 +211,22 @@ namespace npcook.Terminal
 
 		public void EraseCharacters(int length, bool advanceCursor = true)
 		{
+			Contract.Requires(length >= 0 && CursorPos.Col + length < Size.Col);
+
 			SetCharacters(new string(' ', length), new TerminalFont() { Hidden = true }, advanceCursor);
 		}
 
 		public void DeleteCharacters(int length)
 		{
+			Contract.Requires(length >= 0 && CursorPos.Col + length < Size.Col);
+
 			lines[CursorPos.Row].DeleteCharacters(CursorPos.Col, length);
 		}
 
 		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)
 		{
+			Contract.Requires(text != null);
+
 			bool ignoreNextLine = false;
 			int textIndex = 0;
 			while (textIndex < text.Length)

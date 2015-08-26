@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -257,13 +258,10 @@ namespace npcook.Terminal
 
 		void setPrivateMode(XtermDecMode mode, bool value)
 		{
-			if (Enum.IsDefined(typeof(XtermDecMode), mode))
-			{
-				privateModes[(XtermDecMode) mode] = value;
+			privateModes[mode] = value;
 
-				if (PrivateModeChanged != null)
-					PrivateModeChanged(this, new PrivateModeChangedEventArgs(mode, value));
-			}
+			if (PrivateModeChanged != null)
+				PrivateModeChanged(this, new PrivateModeChangedEventArgs(mode, value));
 		}
 
 		public event EventHandler<TitleChangeEventArgs> TitleChanged;
@@ -272,6 +270,8 @@ namespace npcook.Terminal
 		public XtermTerminal(IStreamNotifier streamNotifier)
 			: base(streamNotifier)
 		{
+			Contract.Requires(streamNotifier != null);
+
 			foreach (var key in Enum.GetValues(typeof(XtermDecMode)).Cast<XtermDecMode>())
 				privateModes.Add(key, false);
 			privateModes[XtermDecMode.BlinkCursor] = true;
