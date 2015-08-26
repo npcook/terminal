@@ -85,6 +85,9 @@ namespace npcook.Ssh
 	/// </summary>
 	public partial class MainWindow : Window
 	{
+		const int DefaultTerminalCols = 160;
+		const int DefaultTerminalRows = 40;
+
 		private HwndSource hwndSource;
 
 #if USE_LIBSSHNET
@@ -97,9 +100,6 @@ namespace npcook.Ssh
 
 		public void Connect(string serverAddress, int serverPort, string username, IEnumerable<Authentication> authentications)
 		{
-			const int TerminalCols = 160;
-			const int TerminalRows = 40;
-
 			var dataThread = new Thread(() =>
 			{
 				var settings = File.ReadAllLines(@"X:\settings.txt");
@@ -107,24 +107,30 @@ namespace npcook.Ssh
 				var connection = new libsshnetConnection(settings[0], settings[1], settings[2]);
 				stream = connection.GetStream();
 #else
-				ConnectionInfo connectionInfo;
-				if (settings[0] == "password")
-					connectionInfo = new PasswordConnectionInfo(settings[1], settings[2], settings[3]);
-				else
-					connectionInfo = new PrivateKeyConnectionInfo(settings[1], settings[2], new PrivateKeyFile(settings[3], settings[4]));
+				ConnectionInfo connectionInfo = null;
+				foreach (var auth in authentications)
+				{
+					if (auth is PasswordAuthentication)
+						connectionInfo = new PasswordConnectionInfo(serverAddress, serverPort, username, (auth as PasswordAuthentication).Password);
+					else if (auth is KeyAuthentication)
+					{
+						var privateKeyFile = new PrivateKeyFile((auth as KeyAuthentication).Key, (auth as KeyAuthentication).Passphrase);
+						connectionInfo = new PrivateKeyConnectionInfo(serverAddress, serverPort, username, privateKeyFile);
+					}
+				}
 
 				client = new SshClient(connectionInfo);
 				client.Connect();
 
 				client.KeepAliveInterval = TimeSpan.FromSeconds(20);
 
-				stream = client.CreateShellStream("xterm-256color", (uint) TerminalCols, (uint) TerminalRows, 0, 0, 1000);
+				stream = client.CreateShellStream("xterm-256color", (uint) DefaultTerminalCols, (uint) DefaultTerminalRows, 0, 0, 1000);
 
 				Dispatcher.Invoke(() =>
 				{
 					terminalControl.Terminal = new XtermTerminal(new ShellStreamNotifier(terminalControl, stream))
 					{
-						Size = new Terminal.Point(TerminalCols, TerminalRows),
+						Size = new Terminal.Point(DefaultTerminalCols, DefaultTerminalRows),
 						DefaultFont = new TerminalFont()
 						{
 							Foreground = TerminalColors.GetBasicColor(7)
@@ -139,20 +145,6 @@ namespace npcook.Ssh
 					Terminal_SizeChanged(this, null);
 				});
 #endif
-				/*
-				stream.DataReceived += (sender, e) =>
-				{
-					try
-					{
-						terminalControl.BeginChange();
-						handler.HandleInput(reader);
-						terminalControl.EndChange();
-					}
-					catch (Exception)
-					{
-						System.Diagnostics.Debugger.Break();
-					}
-				};*/
 			});
 			dataThread.Name = "Data Thread";
 			dataThread.IsBackground = true;
