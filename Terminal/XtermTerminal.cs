@@ -13,6 +13,7 @@ namespace npcook.Terminal
 	// Contains xterm DEC private mode set values.  Values that end in an underscore are not implemented.
 	public enum XtermDecMode
 	{
+		None = 0, 
 		AppCursorKeys = 1,		// Application cursor keys
 		USASCII_VT100_ = 2,		// USASCII for character sets G0-G3 & VT100 mode
 		Columns132_ = 3,		// 132 column mode
@@ -138,6 +139,7 @@ namespace npcook.Terminal
 
 		void discardSequence()
 		{
+			System.Diagnostics.Debug.WriteLine("Discarding sequence: " + partial.ToString());
 			partial.Clear();
 		}
 
@@ -167,10 +169,11 @@ namespace npcook.Terminal
 						state = State.Csi;
 					else if (c == ']')
 						state = State.Osc;
-					else if (char.IsLetter(c))
+					else if (c >= '0')
 					{
 						partial.Append(c);
 						endSequence(SequenceType.SingleEscape);
+						state = State.Text;
 					}
 					else
 					{
@@ -652,6 +655,16 @@ namespace npcook.Terminal
 						}
 						break;
 
+					case 'S':
+						foreach (int i in Enumerable.Range(0, getAtOrDefault(codes, 0, 1)))
+							scroll(false);
+						break;
+
+					case 'T':
+						foreach (int i in Enumerable.Range(0, getAtOrDefault(codes, 0, 1)))
+							scroll(true);
+						break;
+
 					case 'P':
 						DeleteCharacters(getAtOrDefault(codes, 0, 1));
 						break;
@@ -720,6 +733,20 @@ namespace npcook.Terminal
 			System.Diagnostics.Debug.WriteLine(string.Format("{0} ^[ {1}", handled ? "X" : " ", sequence));
 
 			return handled;
+		}
+
+		void scroll(bool up)
+		{
+			int actualTop = Math.Max(scrollRegionTop, 0);
+			int actualBottom = Math.Min(scrollRegionBottom, Terminal.Size.Row);
+			if (up)
+			{
+				MoveLines(actualTop, actualTop + 1, actualBottom - actualTop - 1);
+			}
+			else
+			{
+				MoveLines(actualTop + 1, actualTop, actualBottom - actualTop - 1);
+			}
 		}
 
 		void lineFeed(bool reverse)
