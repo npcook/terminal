@@ -274,7 +274,6 @@ namespace npcook.Terminal
 		{
 			foreach (var key in Enum.GetValues(typeof(XtermDecMode)).Cast<XtermDecMode>())
 				privateModes.Add(key, false);
-			privateModes[XtermDecMode.BlinkCursor] = true;
 			privateModes[XtermDecMode.ShowCursor] = true;
 			privateModes[XtermDecMode.UseNormalScreen] = true;
 			privateModes[XtermDecMode.Wraparound] = true;
@@ -636,6 +635,23 @@ namespace npcook.Terminal
 								break;
 						}
 						CursorPos = oldCursorPos;
+						break;
+
+					case 'L':
+						{
+							int rows = getAtOrDefault(codes, 0, 1);
+							for (int i = scrollRegionBottom - 1; i >= CursorPos.Row; --i)
+							{
+								lines[i].DeleteCharacters(0, lines[i].Length);
+								if (i - rows >= scrollRegionTop)
+								{
+									foreach (var run in lines[i - rows].Runs)
+									{
+										lines[i].SetCharacters(lines[i].Length, run.Text, run.Font);
+									}
+								}
+							}
+						}
 						break;
 
 					case 'M':
