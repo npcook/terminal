@@ -95,6 +95,22 @@ namespace npcook.Terminal.Controls
 		public double CharHeight
 		{ get { return impl.CharHeight; } }
 
+		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnGotKeyboardFocus(e);
+			
+			impl.EnableCaret = true;
+			e.Handled = true;
+		}
+
+		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnLostKeyboardFocus(e);
+			
+			impl.EnableCaret = false;
+			e.Handled = true;
+		}
+
 		protected override void OnPreviewKeyDown(KeyEventArgs e)
 		{
 			bool handled = true;
@@ -136,8 +152,7 @@ namespace npcook.Terminal.Controls
 
 			if (bytesToWrite != null)
 			{
-				Terminal.Writer.Write(bytesToWrite);
-				Terminal.Writer.Flush();
+				Terminal.SendBytes(bytesToWrite);
 			}
 			e.Handled = handled;
 		}
@@ -150,8 +165,7 @@ namespace npcook.Terminal.Controls
 					System.Diagnostics.Debugger.Break();
 				if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
 				{
-					Terminal.Writer.Write(c);
-					Terminal.Writer.Flush();
+					Terminal.SendChar(c);
 				}
 				else
 					System.Diagnostics.Debugger.Break();
@@ -170,6 +184,11 @@ namespace npcook.Terminal.Controls
 		public void EndChange()
 		{
 			impl.EndChange();
+		}
+
+		public void AddMessage(string text, TerminalFont font)
+		{
+			impl.AddMessage(text, font);
 		}
 	}
 }

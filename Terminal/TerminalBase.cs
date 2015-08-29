@@ -76,8 +76,21 @@ namespace npcook.Terminal
 		}
 	}
 
+	public class StreamExceptionEventArgs : EventArgs
+	{
+		public Exception Exception
+		{ get; }
+
+		public StreamExceptionEventArgs(Exception exception)
+		{
+			Exception = exception;
+		}
+	}
+
 	public class TerminalBase : IDisposable
 	{
+		public event EventHandler<StreamExceptionEventArgs> StreamException;
+
 		int cursorCol;
 		int cursorRow;
 		public Point CursorPos
@@ -116,7 +129,7 @@ namespace npcook.Terminal
 		{ get; }
 
 		BinaryWriter writer;
-		public BinaryWriter Writer
+		protected BinaryWriter Writer
 		{ get { return writer; } }
 
 		public TerminalFont CurrentFont
@@ -216,16 +229,15 @@ namespace npcook.Terminal
 
 		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)
 		{
-			bool ignoreNextLine = false;
 			int textIndex = 0;
 			while (textIndex < text.Length)
 			{
-				int lineEnd = text.IndexOfAny(new[] { '\r', '\n' }, textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col + 1));
-				bool controlFound = false;
+				int lineEnd = text.IndexOf('\r', textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col + 1));
+				bool carriageFound = false;
 				if (lineEnd == -1)
 					lineEnd = text.Length;
 				else
-					controlFound = true;
+					carriageFound = true;
 				lineEnd = textIndex + Math.Min(lineEnd - textIndex, Size.Col - CursorPos.Col);
 
 				lines[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
@@ -238,30 +250,14 @@ namespace npcook.Terminal
 
 				bool endOfLine = (cursorCol == Size.Col);
 				bool nextRow = endOfLine;
-				if (controlFound)
+				if (carriageFound)
 				{
-					if (text[textIndex] != '\r' && text[textIndex] != '\n')
+					if (text[textIndex] != '\r')
 						textIndex++;
-					char c = text[textIndex];
-					if (c == '\r')
-					{
-						textIndex++;
-						cursorCol = 0;
-						nextRow = false;
-					}
-					else if (c == '\n')
-					{
-						textIndex++;
-						if (!ignoreNextLine)
-							nextRow = true;
-						ignoreNextLine = false;
-					}
+					textIndex++;
+					cursorCol = 0;
+					nextRow = false;
 				}
-				else
-					ignoreNextLine = false;
-
-				if (endOfLine)
-					ignoreNextLine = true;
 
 				if (nextRow && advanceCursor)
 					advanceCursorRow();
@@ -269,6 +265,65 @@ namespace npcook.Terminal
 
 			if (CursorPosChanged != null && advanceCursor)
 				CursorPosChanged(this, EventArgs.Empty);
+		}
+
+		public bool SendByte(byte data)
+		{
+			try
+			{
+				writer.Write(data);
+				writer.Flush();
+				return true;
+			}
+			catch (Exception ex)
+			{
+				if (StreamException != null)
+					StreamException(this, new StreamExceptionEventArgs(ex));
+				else
+					throw;
+			}
+			return false;
+		}
+
+		public bool SendBytes(byte[] data)
+		{
+			return SendBytes(data, 0, data.Length);
+		}
+
+		public bool SendBytes(byte[] data, int index, int count)
+		{
+			try
+			{
+				writer.Write(data, index, count);
+				writer.Flush();
+				return true;
+			}
+			catch (Exception ex)
+			{
+				if (StreamException != null)
+					StreamException(this, new StreamExceptionEventArgs(ex));
+				else
+					throw;
+			}
+			return false;
+		}
+
+		public bool SendChar(char data)
+		{
+			try
+			{
+				writer.Write(data);
+				writer.Flush();
+				return true;
+			}
+			catch (Exception ex)
+			{
+				if (StreamException != null)
+					StreamException(this, new StreamExceptionEventArgs(ex));
+				else
+					throw;
+			}
+			return false;
 		}
 
 		#region IDisposable Support

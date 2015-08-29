@@ -121,12 +121,38 @@ namespace npcook.Terminal.Controls
 			}
 		}
 
+		private void updateCursorState()
+		{
+			if (ShowCursor)
+			{
+				if (BlinkCursorCore)
+				{
+					caret.Opacity = 1.0;
+					caretTimer.Start();
+				}
+				else
+				{
+					caretTimer.Stop();
+					caret.Opacity = 1.0;
+				}
+			}
+			else
+			{
+				caretTimer.Stop();
+				caret.Opacity = 0.0;
+			}
+		}
+
 		private void Terminal_PrivateModeChanged(object sender, PrivateModeChangedEventArgs e)
 		{
 			if (e.Mode == XtermDecMode.BlinkCursor)
-				BlinkCursor = e.Value;
+			{
+				Dispatcher.Invoke(updateCursorState);
+			}
 			else if (e.Mode == XtermDecMode.ShowCursor)
-				ShowCursor = e.Value;
+			{
+				Dispatcher.Invoke(updateCursorState);
+			}
 		}
 
 		bool blinkCursor = true;
@@ -137,19 +163,7 @@ namespace npcook.Terminal.Controls
 			{
 				blinkCursor = value;
 
-				Dispatcher.Invoke(() =>
-				{
-					if (BlinkCursor)
-					{
-						caret.Opacity = 1.0;
-						caretTimer.Start();
-					}
-					else
-					{
-						caretTimer.Stop();
-						caret.Opacity = 1.0;
-					}
-				});
+				Dispatcher.Invoke(updateCursorState);
 			}
 		}
 
@@ -157,29 +171,31 @@ namespace npcook.Terminal.Controls
 		{
 			get { return BlinkCursor ^ terminal.BlinkCursor; }
 		}
-
-		bool showCursor = true;
+		
 		public bool ShowCursor
 		{
-			get { return showCursor; }
+			get { return terminal.ShowCursor; }
+		}
+
+		bool enableCaret;
+		public bool EnableCaret
+		{
+			get { return enableCaret; }
 			set
 			{
-				showCursor = value;
+				if (enableCaret == value || terminal == null)
+					return;
 
-				Dispatcher.Invoke(() =>
+				if (value)
 				{
-					if (ShowCursor)
-					{
-						caret.Opacity = 1.0;
-						if (BlinkCursor)
-							caretTimer.Start();
-					}
-					else
-					{
-						caretTimer.Stop();
-						caret.Opacity = 0.0;
-					}
-				});
+					updateCursorState();
+				}
+				else if (ShowCursor)
+				{
+					caretTimer.Stop();
+					caret.Opacity = 0.5;
+				}
+				enableCaret = value;
 			}
 		}
 
@@ -246,17 +262,18 @@ namespace npcook.Terminal.Controls
 						if (c == 4)
 							System.Diagnostics.Debugger.Break();
 						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
-							Terminal.Writer.Write(c);
+							Terminal.SendChar(c);
 						else
 							System.Diagnostics.Debugger.Break();
 					}
-					Terminal.Writer.Flush();
 				}
 			}
 		}
 
 		public TerminalControlCore()
 		{
+			Focusable = false;
+
 			Cursor = Cursors.IBeam;
 
 			caret = new DrawingVisual();
@@ -280,6 +297,11 @@ namespace npcook.Terminal.Controls
 			if (lineIndex < 0 || lineIndex >= history.Count)
 				return null;
 			return new PointHitTestResult(history[lineIndex], hitTestParameters.HitPoint);
+		}
+
+		protected override Size ArrangeOverride(Size finalSize)
+		{
+			return base.ArrangeOverride(finalSize);
 		}
 
 		bool selecting = false;
@@ -363,6 +385,25 @@ namespace npcook.Terminal.Controls
 				return new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 		}
 
+		private void prepareHistory(int newLines)
+		{
+			bool needsMeasure = history.Count < historySize;
+
+			if (history.Count + newLines == historySize + 1)
+			{
+				for (int i = 0; i < newLines; ++i)
+					RemoveVisualChild(history.PopFront());
+
+				foreach (var it in history.Select((visual, index) => new { visual, index }))
+				{
+					it.visual.Offset = new Vector(0.0, it.index * CharHeight);
+				}
+			}
+
+			if (needsMeasure)
+				InvalidateMeasure();
+		}
+
 		private void Terminal_LinesMoved(object sender, LinesMovedEventArgs e)
 		{
 			Dispatcher.Invoke(() =>
@@ -371,18 +412,7 @@ namespace npcook.Terminal.Controls
 
 				if (addToHistory)
 				{
-					if (history.Count == historySize)
-					{
-						RemoveVisualChild(history.PopFront());
-						for (int i = 0; i < history.Count; ++i)
-						{
-							var visual = history[i];
-							visual.Offset = new Vector(0.0, i * CharHeight);
-						}
-					}
-
-					if (history.Count < historySize)
-						InvalidateMeasure();
+					prepareHistory(1);
 				}
 				else
 				{
@@ -490,9 +520,12 @@ namespace npcook.Terminal.Controls
 			if (terminal != null)
 				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * adjustedRowPos) + 0.5);
 
-			caretTimer.Stop();
-			caret.Opacity = 1.0;
-			caretTimer.Start();
+			if (ShowCursor && BlinkCursorCore)
+			{
+				caretTimer.Stop();
+				caret.Opacity = 1.0;
+				caretTimer.Start();
+			}
 		}
 
 		Dictionary<Color, SolidColorBrush> brushCache = new Dictionary<Color, SolidColorBrush>();
@@ -521,27 +554,6 @@ namespace npcook.Terminal.Controls
 		{
 			var color = font.Background;
 			return GetBrush(color);
-		}
-
-		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
-		{
-			base.OnGotKeyboardFocus(e);
-
-			caret.Opacity = 1.0;
-			caretTimer.Start();
-		}
-
-		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
-		{
-			base.OnLostKeyboardFocus(e);
-
-			caretTimer.Stop();
-			caret.Opacity = 0.0;
-		}
-
-		protected override void OnKeyDown(KeyEventArgs e)
-		{
-			base.OnKeyDown(e);
 		}
 
 		// Bulk changes can be deferred to avoid redundantly updating visuals
@@ -576,6 +588,23 @@ namespace npcook.Terminal.Controls
 				throw new InvalidOperationException("Must be deferring changes before a callback can be added");
 
 			deferChangesCallbacks[callee] = callback;
+		}
+
+		public void AddMessage(string text, TerminalFont font)
+		{
+			prepareHistory(1);
+			
+			var line = new TerminalLine();
+			int leftPadding = (Terminal.Size.Col - text.Length) / 2;
+			int rightPadding = (Terminal.Size.Col - text.Length + 1) / 2;
+            line.SetCharacters(0, new string(' ', leftPadding), font);
+			line.SetCharacters(leftPadding, text, font);
+			line.SetCharacters(leftPadding + text.Length, new string(' ', rightPadding), font);
+
+			var visual = new TerminalLineVisual(this, line);
+			visual.Offset = new Vector(0.0, history.Count * CharHeight);
+			AddVisualChild(visual);
+			history.PushBack(visual);
 		}
 	}
 }

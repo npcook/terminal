@@ -137,12 +137,13 @@ namespace npcook.Ssh
 						}
 					};
 					handler = terminalControl.Terminal;
+					terminalControl.Terminal.StreamException += Terminal_StreamException;
 					terminalControl.Terminal.TitleChanged += (sender, e) =>
 					{
 						Dispatcher.Invoke(() => Title = e.Title);
 					};
 
-					Terminal_SizeChanged(this, null);
+					Terminal_SizeChanged(this, EventArgs.Empty);
 				});
 #endif
 			});
@@ -151,24 +152,50 @@ namespace npcook.Ssh
 			dataThread.Start();
 		}
 
+		private void Terminal_StreamException(object sender, StreamExceptionEventArgs e)
+		{
+			string message;
+			var ex1 = (e.Exception as Renci.SshNet.Common.SshConnectionException);
+			var ex2 = (e.Exception as IOException);
+			var ex3 = (e.Exception as System.Net.Sockets.SocketException);
+			if (ex1 != null || ex3 != null)
+				message = string.Format("Connection to the server has been lost: {0}", e.Exception.Message);
+			else if (ex2 != null)
+				message = string.Format("An error occurred reading from the server: {0}", e.Exception.Message);
+			else
+				throw new Exception("An unidentified error occurred.", e.Exception);
+			terminalControl.AddMessage("", new TerminalFont());
+			terminalControl.AddMessage(message, new TerminalFont() { Foreground = Terminal.Color.FromRgb(255, 0, 0), Background = Terminal.Color.FromRgb(0, 0, 0) } );
+			terminalControl.AddMessage("", new TerminalFont());
+			MessageBox.Show(this, message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+		}
+
 		public MainWindow()
 		{
 			InitializeComponent();
 
-			IsVisibleChanged += (sender, e) =>
-			{
-				if (hwndSource == null)
-				{
-					hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-					hwndSource.AddHook(HwndHook);
-				}
-			};
+			IsVisibleChanged += this_IsVisibleChanged;
+		}
+
+		private void this_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+		{
+			hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+			hwndSource.AddHook(HwndHook);
+
+			resizeTerminal(DefaultTerminalCols, DefaultTerminalRows);
+
+			IsVisibleChanged -= this_IsVisibleChanged;
+		}
+
+		private void resizeTerminal(int cols, int rows)
+		{
+			terminalControl.Width = cols * terminalControl.CharWidth + SystemParameters.ScrollWidth;
+			terminalControl.Height = rows * terminalControl.CharHeight;
 		}
 
 		private void Terminal_SizeChanged(object sender, EventArgs e)
 		{
-			terminalControl.Width = terminalControl.Terminal.Size.Col * terminalControl.CharWidth + SystemParameters.ScrollWidth;
-			terminalControl.Height = terminalControl.Terminal.Size.Row * terminalControl.CharHeight;
+			resizeTerminal(terminalControl.Terminal.Size.Col, terminalControl.Terminal.Size.Row);
 		}
 
 		[StructLayout(LayoutKind.Sequential)]
@@ -208,6 +235,8 @@ namespace npcook.Ssh
 
 		void OnKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
 		{
+			terminalControl.Focus();
+			Keyboard.Focus(terminalControl);
 		}
 
 		private void connect_click(object sender, RoutedEventArgs e)
