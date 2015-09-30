@@ -120,19 +120,7 @@ namespace npcook.Terminal.Controls
 
 			// Convert to char array because BinaryWriter sends strings prefixed with their
 			// length
-			if (e.Key == Key.Tab)
-				bytesToWrite = encoding.GetBytes("\t");
-			else if (e.Key == Key.Left)
-				bytesToWrite = encoding.GetBytes("\x1b[D");
-			else if (e.Key == Key.Right)
-				bytesToWrite = encoding.GetBytes("\x1b[C");
-			else if (e.Key == Key.Up)
-				bytesToWrite = encoding.GetBytes("\x1b[A");
-			else if (e.Key == Key.Down)
-				bytesToWrite = encoding.GetBytes("\x1b[B");
-			else if (e.Key == Key.Delete)
-				bytesToWrite = encoding.GetBytes("\x1b[3~");
-			else if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+			if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
 			{
 				if (e.Key >= Key.A && e.Key <= Key.Z)
 					bytesToWrite = new byte[] { (byte) (e.Key - Key.A + 1) };
@@ -146,6 +134,48 @@ namespace npcook.Terminal.Controls
 					bytesToWrite = new byte[] { 30 };
 				else if (e.Key == Key.OemMinus && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
 					bytesToWrite = new byte[] { 31 };
+			}
+			else if (!Terminal.AppCursorKeys)
+			{
+				if (e.Key == Key.Tab)
+					bytesToWrite = encoding.GetBytes("\t");
+				else if (e.Key == Key.Left)
+					bytesToWrite = encoding.GetBytes("\x1b[D");
+				else if (e.Key == Key.Right)
+					bytesToWrite = encoding.GetBytes("\x1b[C");
+				else if (e.Key == Key.Up)
+					bytesToWrite = encoding.GetBytes("\x1b[A");
+				else if (e.Key == Key.Down)
+					bytesToWrite = encoding.GetBytes("\x1b[B");
+				else if (e.Key == Key.Delete)
+					bytesToWrite = encoding.GetBytes("\x1b[3~");
+				else if (e.Key == Key.Home)
+					bytesToWrite = encoding.GetBytes("\x1b[H");
+				else if (e.Key == Key.End)
+					bytesToWrite = encoding.GetBytes("\x1b[F");
+				else
+					handled = false;
+			}
+			else if (Terminal.AppCursorKeys)
+			{
+				if (e.Key == Key.Tab)
+					bytesToWrite = encoding.GetBytes("\t");
+				else if (e.Key == Key.Left)
+					bytesToWrite = encoding.GetBytes("\x1bOD");
+				else if (e.Key == Key.Right)
+					bytesToWrite = encoding.GetBytes("\x1bOC");
+				else if (e.Key == Key.Up)
+					bytesToWrite = encoding.GetBytes("\x1bOA");
+				else if (e.Key == Key.Down)
+					bytesToWrite = encoding.GetBytes("\x1bOB");
+				else if (e.Key == Key.Delete)
+					bytesToWrite = encoding.GetBytes("\x1b[3~");
+				else if (e.Key == Key.Home)
+					bytesToWrite = encoding.GetBytes("\x1bOH");
+				else if (e.Key == Key.End)
+					bytesToWrite = encoding.GetBytes("\x1bOF");
+				else
+					handled = false;
 			}
 			else
 				handled = false;
