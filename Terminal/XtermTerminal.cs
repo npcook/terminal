@@ -241,6 +241,7 @@ namespace npcook.Terminal
 		Dictionary<XtermDecMode, bool> privateModes = new Dictionary<XtermDecMode, bool>();
 
 		Point savedCursorPos;
+		Point mainScreenSavedCursorPos;
 		TerminalFont font;
 		XtermStreamParser parser;
 
@@ -259,7 +260,7 @@ namespace npcook.Terminal
 		{
 			if (Enum.IsDefined(typeof(XtermDecMode), mode))
 			{
-				privateModes[(XtermDecMode) mode] = value;
+				privateModes[mode] = value;
 
 				if (PrivateModeChanged != null)
 					PrivateModeChanged(this, new PrivateModeChangedEventArgs(mode, value));
@@ -284,22 +285,24 @@ namespace npcook.Terminal
 
 		private void Parser_SequenceReceived(object sender, SequenceReceivedEventArgs e)
 		{
+			bool handled = true;
 			switch (e.Type)
 			{
 				case SequenceType.Text:
 					Terminal.SetCharacters(e.Sequence, font);
+					System.Diagnostics.Debug.WriteLine("got: " + e.Sequence);
 					break;
 
 				case SequenceType.Csi:
-					handleCsi(e.Sequence);
+					handled = handleCsi(e.Sequence);
 					break;
 
 				case SequenceType.Osc:
-					handleOsc(e.Sequence);
+					handled = handleOsc(e.Sequence);
 					break;
 
 				case SequenceType.SingleEscape:
-					handleSingleEscape(e.Sequence[0]);
+					handled = handleSingleEscape(e.Sequence[0]);
 					break;
 
 				case SequenceType.ControlCode:
@@ -314,8 +317,28 @@ namespace npcook.Terminal
 						else
 							CursorPos = new Point(CursorPos.Col - 1, CursorPos.Row);
 					}
+					else if (e.Sequence[0] == '\t')
+					{
+						const int TabStopInterval = 8;
+						CursorPos = new Point(Math.Min(((CursorPos.Col + TabStopInterval) / TabStopInterval) * TabStopInterval, Size.Col - 1), CursorPos.Row);
+					}
+					else if (e.Sequence[0] == '\a')
+					{
+						// Disabled because annoyance
+						//System.Media.SystemSounds.Beep.Play();
+					}
+					else
+						handled = false;
 					break;
 			}
+
+/*#if !DEBUG
+			if (!handled)
+				System.Diagnostics.Debugger.Break();
+#else
+			if (!handled)
+				System.Diagnostics.Debugger.Break();
+#endif*/
 		}
 
 		static int getAtOrDefault(int?[] arr, int index, int defaultValue)
@@ -400,6 +423,9 @@ namespace npcook.Terminal
 		public bool ShowCursor
 		{ get { return privateModes[XtermDecMode.ShowCursor]; } }
 
+		public bool AppCursorKeys
+		{ get { return privateModes[XtermDecMode.AppCursorKeys]; } }
+
 		public bool UnderlineCursor
 		{ get; private set; }
 
@@ -421,8 +447,13 @@ namespace npcook.Terminal
 					break;
 
 				case XtermDecMode.UseAltScreenAndSaveCursor:
-					savedCursorPos = CursorPos;
+					mainScreenSavedCursorPos = CursorPos;
 					ChangeToScreen(true);
+					break;
+
+				case XtermDecMode.AppCursorKeys:
+				case XtermDecMode.BlinkCursor:
+				case XtermDecMode.ShowCursor:
 					break;
 
 				default:
@@ -452,8 +483,13 @@ namespace npcook.Terminal
 					break;
 
 				case XtermDecMode.UseAltScreenAndSaveCursor:
-					CursorPos = savedCursorPos;
+					CursorPos = mainScreenSavedCursorPos;
 					ChangeToScreen(false);
+					break;
+
+				case XtermDecMode.AppCursorKeys:
+				case XtermDecMode.BlinkCursor:
+				case XtermDecMode.ShowCursor:
 					break;
 
 				default:
@@ -468,6 +504,13 @@ namespace npcook.Terminal
 
 		int scrollRegionTop = 0;
 		int scrollRegionBottom = int.MaxValue;
+
+		struct CsiHandler
+		{
+			public char Symbol;
+			public string Name;
+			public string Description;
+		}
 
 		bool handleCsi(string sequence)
 		{
@@ -532,6 +575,10 @@ namespace npcook.Terminal
 				{
 					case 'm':
 						handled = handleCsiSgr(codes);
+						break;
+
+					case '@':
+						InsertCharacters(new string(' ', getAtOrDefault(codes, 0, 1)), CurrentFont);
 						break;
 
 					case 'A':
@@ -672,17 +719,24 @@ namespace npcook.Terminal
 						break;
 
 					case 'S':
-						foreach (int i in Enumerable.Range(0, getAtOrDefault(codes, 0, 1)))
-							scroll(false);
+						scroll(false, getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'T':
-						foreach (int i in Enumerable.Range(0, getAtOrDefault(codes, 0, 1)))
-							scroll(true);
+						scroll(true, getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'P':
 						DeleteCharacters(getAtOrDefault(codes, 0, 1));
+						break;
+
+					case 'X':
+						EraseCharacters(getAtOrDefault(codes, 0, 1));
+						break;
+
+					case 'Z':
+						const int TabStopInterval = 8;
+						CursorPos = new Point(Math.Max(((CursorPos.Col - TabStopInterval) / TabStopInterval + 1) * TabStopInterval, 0), CursorPos.Row);
 						break;
 
 					case 'r':
@@ -751,17 +805,17 @@ namespace npcook.Terminal
 			return handled;
 		}
 
-		void scroll(bool up)
+		void scroll(bool up, int count)
 		{
 			int actualTop = Math.Max(scrollRegionTop, 0);
 			int actualBottom = Math.Min(scrollRegionBottom, Terminal.Size.Row);
 			if (up)
 			{
-				MoveLines(actualTop, actualTop + 1, actualBottom - actualTop - 1);
+				MoveLines(actualTop, actualTop + count, actualBottom - actualTop - count);
 			}
 			else
 			{
-				MoveLines(actualTop + 1, actualTop, actualBottom - actualTop - 1);
+				MoveLines(actualTop + count, actualTop, actualBottom - actualTop - count);
 			}
 		}
 
