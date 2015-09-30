@@ -14,8 +14,22 @@ namespace npcook.Ssh
 	/// </summary>
 	public partial class App : Application
 	{
+		public const int DefaultTerminalCols = 160;
+		public const int DefaultTerminalRows = 40;
+
 		public static new App Current
 		{ get { return Application.Current as App; } }
+
+		public App()
+		{
+			Dispatcher.UnhandledException += Dispatcher_UnhandledException;
+		}
+
+		private void Dispatcher_UnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+		{
+			MessageBox.Show(MainWindow, e.Exception.Message, "An unhandled exception has occurred", MessageBoxButton.OK, MessageBoxImage.Error);
+			Shutdown(1);
+		}
 
 		private void this_Startup(object sender, StartupEventArgs e)
 		{
@@ -32,7 +46,7 @@ namespace npcook.Ssh
 				if (dialog.KeyFilePath != "")
 					authList.Add(new KeyAuthentication(File.Open(dialog.KeyFilePath, FileMode.Open), dialog.KeyFilePassphrase.ToString()));
 
-				mainWindow.Connect(dialog.ServerAddress, dialog.ServerPort, dialog.Username, authList);
+				mainWindow.Connect(dialog.Connection.Stream);
 				mainWindow.Show();
 				ShutdownMode = ShutdownMode.OnLastWindowClose;
 			}

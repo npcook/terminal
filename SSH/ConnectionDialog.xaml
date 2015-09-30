@@ -5,7 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:npcook.Ssh"
         mc:Ignorable="d"
-        Title="Connection Settings" SizeToContent="WidthAndHeight" SnapsToDevicePixels="True" WindowStartupLocation="CenterScreen">
+        Title="Connection Settings" SizeToContent="WidthAndHeight" SnapsToDevicePixels="True" 
+        WindowStartupLocation="CenterScreen" MinWidth="550">
     <Window.Resources>
         <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -23,8 +24,25 @@
             <Setter Property="Height" Value="20"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <DataTemplate x:Key="ConnectionItemTemplate">
+            <StackPanel Orientation="Horizontal">
+                <StackPanel.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Delete" Click="settingsListItem_Delete" Tag="{Binding }"></MenuItem>
+                    </ContextMenu>
+                </StackPanel.ContextMenu>
+                <TextBlock Text="{Binding Username}"/>
+                <TextBlock Text="@"/>
+                <TextBlock Text="{Binding ServerAddress}"/>
+            </StackPanel>
+        </DataTemplate>
     </Window.Resources>
     <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="150"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="Auto" x:Name="formCol"/>
+        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="5"/>
@@ -33,7 +51,11 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <GroupBox Header="Server" Grid.Row="0" Grid.Column="0" Padding="5,5,5,5">
+        <ListBox x:Name="settingsList" SelectionChanged="settingsList_SelectionChanged"
+                 ItemTemplate="{DynamicResource ConnectionItemTemplate}"
+                 Grid.Column="0" Grid.RowSpan="5">
+        </ListBox>
+        <GroupBox Header="Server" Grid.Row="0" Grid.Column="2" Padding="5,5,5,5">
             <StackPanel Orientation="Horizontal">
                 <Label Content="Address" Target="{Binding ElementName=serverAddress}" Padding="0,0,5,0"/>
                 <TextBox x:Name="serverAddress" Width="200"/>
@@ -42,7 +64,7 @@
             </StackPanel>
         </GroupBox>
 
-        <GroupBox Header="Authentication" Grid.Row="2" Grid.Column="0" Padding="5">
+        <GroupBox Header="Authentication" Grid.Row="2" Grid.Column="2" Padding="5">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -71,9 +93,10 @@
                 <PasswordBox x:Name="keyPassphrase" Width="150" Grid.Row="6" Grid.Column="1" HorizontalAlignment="Left"/>
             </Grid>
         </GroupBox>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Row="4">
-            <Button x:Name="connectButton" Content="Connect" Width="75" Margin="0,0,5,0" Click="connect_Click" IsDefault="True"/>
-            <Button x:Name="closeButton" Content="Close" Width="75" Click="close_Click"/>
-        </StackPanel>
+        <DockPanel Grid.Row="4" Grid.Column="2" LastChildFill="False">
+            <Button x:Name="saveButton" Content="Save" Width="75" Click="save_Click" DockPanel.Dock="Left"/>
+            <Button x:Name="closeButton" Content="Close" Width="75" Click="close_Click" DockPanel.Dock="Right"/>
+            <Button x:Name="connectButton" Content="Connect" Width="75" Margin="0,0,5,0" Click="connect_Click" IsDefault="True" DockPanel.Dock="Right"/>
+        </DockPanel>
     </Grid>
 </Window>

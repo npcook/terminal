@@ -55,6 +55,32 @@ namespace npcook.Ssh
 		}
 	}
 
+#if USE_LIBSSHNET
+	class LibSshNetStreamNotifier : IStreamNotifier
+	{
+		TerminalControl terminal;
+
+		public Stream Stream
+		{ get; }
+
+		public event EventHandler DataAvailable;
+
+		public LibSshNetStreamNotifier(TerminalControl terminal, LibSshNetStream stream)
+		{
+			this.terminal = terminal;
+			Stream = stream;
+			stream.DataReceived += Stream_DataReceived;
+		}
+
+		private void Stream_DataReceived(object sender, EventArgs e)
+		{
+			terminal.BeginChange();
+			if (DataAvailable != null)
+				DataAvailable(this, EventArgs.Empty);
+			terminal.EndChange();
+		}
+	}
+#else
 	class ShellStreamNotifier : IStreamNotifier
 	{
 		TerminalControl terminal;
@@ -71,85 +97,60 @@ namespace npcook.Ssh
 			stream.DataReceived += Stream_DataReceived;
 		}
 
+		public void Start()
+		{
+			if ((Stream as ShellStream).DataAvailable && DataAvailable != null)
+				Stream_DataReceived(this, null);
+		}
+
 		private void Stream_DataReceived(object sender, Renci.SshNet.Common.ShellDataEventArgs e)
 		{
 			terminal.BeginChange();
 			if (DataAvailable != null)
 				DataAvailable(this, EventArgs.Empty);
+			else
+				throw new InvalidOperationException("Data was received but no one was listening.");
 			terminal.EndChange();
 		}
 	}
+#endif
 
 	/// <summary>
 	/// Interaction logic for MainWindow.xaml
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		const int DefaultTerminalCols = 160;
-		const int DefaultTerminalRows = 40;
-
 		private HwndSource hwndSource;
 
 #if USE_LIBSSHNET
-		libsshnetStream stream;
+		LibSshNetStream stream;
 #else
-		SshClient client;
 		ShellStream stream;
 #endif
 		ITerminalHandler handler;
 
-		public void Connect(string serverAddress, int serverPort, string username, IEnumerable<Authentication> authentications)
+		public void Connect(ShellStream stream)
 		{
-			var dataThread = new Thread(() =>
+			this.stream = stream;
+			var notifier = new ShellStreamNotifier(terminalControl, stream);
+            terminalControl.Terminal = new XtermTerminal(notifier)
 			{
-				var settings = File.ReadAllLines(@"X:\settings.txt");
-#if USE_LIBSSHNET
-				var connection = new libsshnetConnection(settings[0], settings[1], settings[2]);
-				stream = connection.GetStream();
-#else
-				ConnectionInfo connectionInfo = null;
-				foreach (var auth in authentications)
+				Size = new Terminal.Point(App.DefaultTerminalCols, App.DefaultTerminalRows),
+				DefaultFont = new TerminalFont()
 				{
-					if (auth is PasswordAuthentication)
-						connectionInfo = new PasswordConnectionInfo(serverAddress, serverPort, username, (auth as PasswordAuthentication).Password);
-					else if (auth is KeyAuthentication)
-					{
-						var privateKeyFile = new PrivateKeyFile((auth as KeyAuthentication).Key, (auth as KeyAuthentication).Passphrase);
-						connectionInfo = new PrivateKeyConnectionInfo(serverAddress, serverPort, username, privateKeyFile);
-					}
+					Foreground = TerminalColors.GetBasicColor(7)
 				}
+			};
+			handler = terminalControl.Terminal;
+			terminalControl.Terminal.StreamException += Terminal_StreamException;
+			terminalControl.Terminal.TitleChanged += (sender, e) =>
+			{
+				Dispatcher.Invoke(() => Title = e.Title);
+			};
 
-				client = new SshClient(connectionInfo);
-				client.Connect();
+			Terminal_SizeChanged(this, EventArgs.Empty);
 
-				client.KeepAliveInterval = TimeSpan.FromSeconds(20);
-
-				stream = client.CreateShellStream("xterm-256color", (uint) DefaultTerminalCols, (uint) DefaultTerminalRows, 0, 0, 1000);
-
-				Dispatcher.Invoke(() =>
-				{
-					terminalControl.Terminal = new XtermTerminal(new ShellStreamNotifier(terminalControl, stream))
-					{
-						Size = new Terminal.Point(DefaultTerminalCols, DefaultTerminalRows),
-						DefaultFont = new TerminalFont()
-						{
-							Foreground = TerminalColors.GetBasicColor(7)
-						}
-					};
-					handler = terminalControl.Terminal;
-					terminalControl.Terminal.StreamException += Terminal_StreamException;
-					terminalControl.Terminal.TitleChanged += (sender, e) =>
-					{
-						Dispatcher.Invoke(() => Title = e.Title);
-					};
-
-					Terminal_SizeChanged(this, EventArgs.Empty);
-				});
-#endif
-			});
-			dataThread.Name = "Data Thread";
-			dataThread.IsBackground = true;
-			dataThread.Start();
+			notifier.Start();
 		}
 
 		private void Terminal_StreamException(object sender, StreamExceptionEventArgs e)
@@ -179,12 +180,12 @@ namespace npcook.Ssh
 
 		private void this_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
 		{
+			IsVisibleChanged -= this_IsVisibleChanged;
+
 			hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
 			hwndSource.AddHook(HwndHook);
 
-			resizeTerminal(DefaultTerminalCols, DefaultTerminalRows);
-
-			IsVisibleChanged -= this_IsVisibleChanged;
+			resizeTerminal(App.DefaultTerminalCols, App.DefaultTerminalRows);
 		}
 
 		private void resizeTerminal(int cols, int rows)
@@ -244,7 +245,6 @@ namespace npcook.Ssh
 			var dialog = new ConnectionDialog();
 			if (dialog.ShowDialog().GetValueOrDefault(false))
 			{
-				Connect(null, 0, null, null);
 			}
 		}
 	}

@@ -1,21 +1,23 @@
-﻿using System;
+﻿#if USE_LIBSSHNET
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using npcook.libsshnet;
 using System.IO;
 using System.Threading;
 
+using npcook.libsshnet;
+
 namespace npcook.Ssh
 {
-	class libsshnetStream : Stream
+	class LibSshNetStream : Stream
 	{
-		libsshnetConnection connection;
+		LibSshNetConnection connection;
 		Queue<byte> buffer = new Queue<byte>(2048);
 
-		internal libsshnetStream(libsshnetConnection connection)
+		internal LibSshNetStream(LibSshNetConnection connection)
 		{
 			this.connection = connection;
 		}
@@ -98,7 +100,7 @@ namespace npcook.Ssh
 		public event EventHandler<EventArgs> DataReceived;
 	}
 
-	class libsshnetConnection
+	class LibSshNetConnection
 	{
 		internal Session Session
 		{ get; private set; }
@@ -106,15 +108,15 @@ namespace npcook.Ssh
 		internal Channel Pty
 		{ get; private set; }
 
-		libsshnetStream stream;
+		LibSshNetStream stream;
 
-		public libsshnetConnection(string host, string username, string password)
+		public LibSshNetConnection(string host, string username, string password)
 		{
 			Session = new Session();
 			Session.SetOption(SshOption.Host, host);
 			Session.SetOption(SshOption.Port, 22);
 			Session.SetOption(SshOption.User, username);
-			Session.SetOption(SshOption.CiphersCS, "aes256-cbc");
+//			Session.SetOption(SshOption.CiphersCS, "aes256-cbc");
             Session.Connect();
 
 			Session.PasswordAuth(password);
@@ -123,12 +125,14 @@ namespace npcook.Ssh
 			Pty.RequestPty("xterm", 160, 40);
 			Pty.RequestShell();
 
-			stream = new libsshnetStream(this);
+			stream = new LibSshNetStream(this);
 		}
 
-		public libsshnetStream GetStream()
+		public LibSshNetStream GetStream()
 		{
 			return stream;
 		}
 	}
 }
+
+#endif
