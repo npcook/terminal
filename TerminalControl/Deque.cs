@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace npcook.Terminal.Controls
 {
-	class Deque<T> : ICollection<T>, IEnumerable<T>, ICollection, IEnumerable, IReadOnlyCollection<T>
+	public class Deque<T> : ICollection<T>, IEnumerable<T>, ICollection, IEnumerable, IReadOnlyCollection<T>
 	{
 		const int DefaultInitialSize = 10;
 		const int GrowthMultiplier = 2;
@@ -40,7 +40,7 @@ namespace npcook.Terminal.Controls
 		{
 			if (size == backing.Length)
 				resize(size * GrowthMultiplier);
-			start = (start - 1) % backing.Length;
+			start = (backing.Length + start - 1) % backing.Length;
 			backing[start] = value;
 			size++;
 		}
@@ -164,8 +164,10 @@ namespace npcook.Terminal.Controls
 
 		public void Insert(int index, T value)
 		{
-			Array.Copy(backing, index, backing, index + 1, size - index - 1);
+			Array.Copy(backing, index, backing, index + 1, size - index);
 			backing[index] = value;
+			end++;
+			size++;
 		}
 
 		public bool Remove(T value)
@@ -193,13 +195,18 @@ namespace npcook.Terminal.Controls
 				throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
 
 			int actualIndex = (start + index) % backing.Length;
-			int copyCount = Math.Min(size - index - 2, backing.Length - actualIndex - 1);
+			int copyCount = Math.Min(size - index - 1, backing.Length - actualIndex - 1);
 			Array.Copy(backing, actualIndex + 1, backing, actualIndex, copyCount);
 			if (copyCount < size - index - 1)
 			{
 				backing[backing.Length - 1] = backing[0];
 				Array.Copy(backing, 1, backing, 0, size - index - 1 - copyCount);
 			}
+			size--;
+			end--;
+			if (end == -1)
+				end = backing.Length;
+			backing[size] = default(T);
 		}
 
 		public struct Enumerator : IEnumerator<T>, IEnumerator
