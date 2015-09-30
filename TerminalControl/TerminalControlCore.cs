@@ -71,9 +71,7 @@ namespace npcook.Terminal.Controls
 		}
 
 		const int historySize = 2000;
-
-		// Visuals for the terminal screen (same size as number of rows)
-		readonly List<TerminalLineVisual> screen = new List<TerminalLineVisual>();
+		
 		// Visuals for the scroll-back history
 		readonly Deque<TerminalLineVisual> history = new Deque<TerminalLineVisual>(historySize);
 		// The terminal backing this visual representation
@@ -257,15 +255,11 @@ namespace npcook.Terminal.Controls
 				string text = Clipboard.GetText();
 				if (!string.IsNullOrEmpty(text))
 				{
-					foreach (char c in text)
-					{
-						if (c == 4)
-							System.Diagnostics.Debugger.Break();
-						if (!char.IsControl(c) || c == 27 || c == 8 || c == 13)
-							Terminal.SendChar(c);
-						else
-							System.Diagnostics.Debugger.Break();
-					}
+					Terminal.SendBytes(
+						Encoding.UTF8.GetBytes(
+							text.Where(
+								c => !char.IsControl(c) || c == 27 || c == 8 || c == 13
+								).ToArray()));
 				}
 			}
 		}
@@ -409,9 +403,12 @@ namespace npcook.Terminal.Controls
 			Dispatcher.Invoke(() =>
 			{
 				bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
+				int insertBase = screenIndex + e.AddedLinesIndex;
 
 				if (addToHistory)
 				{
+					if (history.Count == historySize)
+						insertBase--;
 					prepareHistory(1);
 				}
 				else
@@ -426,20 +423,26 @@ namespace npcook.Terminal.Controls
 					{
 						history[screenIndex + e.OldIndex + i].Offset = new Vector(0.0, (screenIndex + e.NewIndex + i) * CharHeight);
 					}
-
-					for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
-						history.RemoveAt(screenIndex + e.RemovedLinesIndex);
+					
+					int removeBase = screenIndex + e.RemovedLinesIndex;
+					// Reversed loop because removal requires all succeeding lines to shift up.
+					// Removing the final lines first means less or no shifting has to happen.
+					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+						history.RemoveAt(removeBase + i);
 				}
 
 				for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
 				{
 					var newVisual = new TerminalLineVisual(this, terminal.CurrentScreen[e.AddedLinesIndex + i]);
-					newVisual.Offset = new Vector(0.0, (screenIndex + e.AddedLinesIndex + i + 1) * CharHeight);
-					AddVisualChild(newVisual);
 					if (addToHistory)
+					{
 						history.PushBack(newVisual);
+						insertBase++;
+					}
 					else
-						history.Insert(screenIndex + e.AddedLinesIndex + i, newVisual);
+						history.Insert(insertBase + i, newVisual);
+					newVisual.Offset = new Vector(0.0, (insertBase + i) * CharHeight);
+					AddVisualChild(newVisual);
 				}
 			});
 		}
