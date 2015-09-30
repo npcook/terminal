@@ -21,7 +21,7 @@ namespace npcook.Terminal.Controls
 			{
 				Color.FromArgb(alpha, intensity, 0, 0),
 				Color.FromArgb(alpha, 0, intensity, 0),
-				Color.FromArgb(alpha, 0, 0, intensity),
+				Color.FromArgb(alpha, 0, 0, (byte) Math.Min(255, 3 * intensity / 2)),
 				Color.FromArgb(alpha, intensity, intensity, 0),
 				Color.FromArgb(alpha, intensity, 0, intensity),
 				Color.FromArgb(alpha, 0, intensity, intensity),
