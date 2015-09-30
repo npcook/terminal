@@ -217,6 +217,11 @@ namespace npcook.Terminal
 				LinesMoved(this, new LinesMovedEventArgs(index, newIndex, count));
 		}
 
+		public void InsertCharacters(string text, TerminalFont font)
+		{
+			lines[CursorPos.Row].InsertCharacters(CursorPos.Col, text, font);
+		}
+
 		public void EraseCharacters(int length, bool advanceCursor = true)
 		{
 			SetCharacters(new string(' ', length), new TerminalFont() { Hidden = true }, advanceCursor);
