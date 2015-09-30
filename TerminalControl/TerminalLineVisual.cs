@@ -70,6 +70,9 @@ namespace npcook.Terminal.Controls
 			var drawPoint = new System.Windows.Point(0, 0);
 			foreach (var run in Line.Runs)
 			{
+				if (run.Font.Hidden && Line.Runs[Line.Runs.Count - 1] == run)
+					break;
+
 				SolidColorBrush foreground;
 				SolidColorBrush background;
 				if (run.Font.Inverse)
@@ -101,11 +104,14 @@ namespace npcook.Terminal.Controls
 
 				if (textDecorations.Count > 0)
 					ft.SetTextDecorations(textDecorations);
-
+				
 				Pen border = null;
 				if (DrawRunBoxes)
 					border = new Pen(DebugColors.GetBrush(index), 1);
-				context.DrawRoundedRectangle(background, border, new Rect(drawPoint, new Vector(ft.WidthIncludingTrailingWhitespace - 1, ft.Height)), 1, 1);
+
+				var backgroundTopLeft = new System.Windows.Point(Math.Floor(drawPoint.X), Math.Floor(drawPoint.Y));
+				var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
+                context.DrawRectangle(background, border, new Rect(backgroundTopLeft, backgroundSize));
 
 				context.DrawText(ft, drawPoint);
 				drawPoint.X += ft.WidthIncludingTrailingWhitespace;
