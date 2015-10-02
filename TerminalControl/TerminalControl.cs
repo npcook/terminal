@@ -115,6 +115,9 @@ namespace npcook.Terminal.Controls
 		{
 			bool handled = true;
 
+			if (e.Key == Key.F12 && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+				impl.DrawRunBoxes = !impl.DrawRunBoxes;
+
 			var encoding = Encoding.ASCII;
 			byte[] bytesToWrite = null;
 
@@ -185,6 +188,8 @@ namespace npcook.Terminal.Controls
 				Terminal.SendBytes(bytesToWrite);
 			}
 			e.Handled = handled;
+
+			scrollViewer.ScrollToBottom();
 		}
 
 		protected override void OnPreviewTextInput(TextCompositionEventArgs e)

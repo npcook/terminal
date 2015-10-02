@@ -81,6 +81,9 @@ namespace npcook.Terminal.Controls
 		// Timer for blinking the caret
 		DispatcherTimer caretTimer;
 
+		internal bool DrawRunBoxes
+		{ get; set; }
+
 		public XtermTerminal Terminal
 		{
 			get { return terminal; }
