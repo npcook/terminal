@@ -319,8 +319,7 @@ namespace npcook.Terminal
 					}
 					else if (e.Sequence[0] == '\t')
 					{
-						const int TabStopInterval = 8;
-						CursorPos = new Point(Math.Min(((CursorPos.Col + TabStopInterval) / TabStopInterval) * TabStopInterval, Size.Col - 1), CursorPos.Row);
+						tab(false);
 					}
 					else if (e.Sequence[0] == '\a')
 					{
@@ -573,10 +572,6 @@ namespace npcook.Terminal
 			{
 				switch (kind)
 				{
-					case 'm':
-						handled = handleCsiSgr(codes);
-						break;
-
 					case '@':
 						InsertCharacters(new string(' ', getAtOrDefault(codes, 0, 1)), CurrentFont);
 						break;
@@ -590,6 +585,7 @@ namespace npcook.Terminal
 						break;
 
 					case 'C':
+					case 'a':
 						CursorPos = new Point(CursorPos.Col + getAtOrDefault(codes, 0, 1), CursorPos.Row);
 						break;
 
@@ -606,6 +602,7 @@ namespace npcook.Terminal
 						break;
 
 					case 'G':
+					case '`':
 						CursorPos = new Point(getAtOrDefault(codes, 0, 1) - 1, CursorPos.Row);
 						break;
 
@@ -618,18 +615,8 @@ namespace npcook.Terminal
 						}
 						break;
 
-					case 'd':
-						{
-							int row = getAtOrDefault(codes, 0, 1);
-							CursorPos = new Point(CursorPos.Col, row - 1);
-						}
-						break;
-
-					case 'e':
-						{
-							int rows = getAtOrDefault(codes, 0, 1);
-							CursorPos = new Point(CursorPos.Col, CursorPos.Row + rows);
-						}
+					case 'I':
+						tab(false);
 						break;
 
 					case 'J':
@@ -718,6 +705,10 @@ namespace npcook.Terminal
 						}
 						break;
 
+					case 'P':
+						DeleteCharacters(getAtOrDefault(codes, 0, 1));
+						break;
+
 					case 'S':
 						scroll(false, getAtOrDefault(codes, 0, 1));
 						break;
@@ -726,17 +717,30 @@ namespace npcook.Terminal
 						scroll(true, getAtOrDefault(codes, 0, 1));
 						break;
 
-					case 'P':
-						DeleteCharacters(getAtOrDefault(codes, 0, 1));
-						break;
-
 					case 'X':
 						EraseCharacters(getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'Z':
-						const int TabStopInterval = 8;
-						CursorPos = new Point(Math.Max(((CursorPos.Col - TabStopInterval) / TabStopInterval + 1) * TabStopInterval, 0), CursorPos.Row);
+						tab(true);
+						break;
+
+					case 'd':
+						{
+							int row = getAtOrDefault(codes, 0, 1);
+							CursorPos = new Point(CursorPos.Col, row - 1);
+						}
+						break;
+
+					case 'e':
+						{
+							int rows = getAtOrDefault(codes, 0, 1);
+							CursorPos = new Point(CursorPos.Col, CursorPos.Row + rows);
+						}
+						break;
+
+					case 'm':
+						handled = handleCsiSgr(codes);
 						break;
 
 					case 'r':
@@ -817,6 +821,15 @@ namespace npcook.Terminal
 			{
 				MoveLines(actualTop + count, actualTop, actualBottom - actualTop - count);
 			}
+		}
+
+		void tab(bool reverse)
+		{
+			const int TabStopInterval = 8;
+			if (reverse)
+				CursorPos = new Point(Math.Max(((CursorPos.Col - TabStopInterval) / TabStopInterval + 1) * TabStopInterval, 0), CursorPos.Row);
+			else
+				CursorPos = new Point(Math.Min(((CursorPos.Col + TabStopInterval) / TabStopInterval) * TabStopInterval, Size.Col - 1), CursorPos.Row);
 		}
 
 		void lineFeed(bool reverse)
