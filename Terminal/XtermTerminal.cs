@@ -668,17 +668,17 @@ namespace npcook.Terminal
 						switch (getAtOrDefault(codes, 0, 0))
 						{
 							case 0:
-								SetCharacters(new string(' ', Size.Col - CursorPos.Col), new TerminalFont() { Hidden = true }, false);
+								EraseCharacters(Size.Col - CursorPos.Col, false);
 								break;
 
 							case 1:
 								CursorPos = new Point(0, CursorPos.Row);
-								SetCharacters(new string(' ', oldCursorPos.Col + 1), new TerminalFont() { Hidden = true }, false);
+								EraseCharacters(oldCursorPos.Col + 1, false);
 								break;
 
 							case 2:
 								CursorPos = new Point(0, CursorPos.Row);
-								SetCharacters(new string(' ', Size.Col), new TerminalFont { Hidden = true }, false);
+								EraseCharacters(Size.Col + 1, false);
 								break;
 						}
 						CursorPos = oldCursorPos;

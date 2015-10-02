@@ -251,9 +251,14 @@ namespace npcook.Terminal
 				var run1 = runs[i];
 				var run2 = runs[i + 1];
 
-				if (run1.Font == run2.Font)
+				bool specialMerge = run2.Font.Hidden || run2.Text == " ";
+
+				if (run1.Font == run2.Font || specialMerge)
 				{
-					run1.Text += run2.Text;
+					if (specialMerge)
+						run1.Text += new string(' ', run2.Text.Length);
+					else
+						run1.Text += run2.Text;
 					runs.RemoveAt(i + 1);
 					i--;
 				}
