@@ -103,6 +103,10 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="FileWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -114,6 +118,9 @@
     <Compile Include="Connection.cs" />
     <Compile Include="ConnectionDialog.xaml.cs">
       <DependentUpon>ConnectionDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="FileWindow.xaml.cs">
+      <DependentUpon>FileWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="LibSshNetConnection.cs" />
     <Compile Include="MainWindow.xaml.cs">
