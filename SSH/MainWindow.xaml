@@ -11,7 +11,7 @@
         <ToolBar x:Name="toolBar">
             <Button Content="Connect" Height="22" VerticalAlignment="Top" Width="75" Click="connect_click"/>
         </ToolBar>
-        <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13" Background="Black" Width="400" Height="200">
+        <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FocusVisualStyle="{x:Null}" FontSize="13" Background="Black" Width="400" Height="200">
         </term:TerminalControl>
     </StackPanel>
 </Window>
