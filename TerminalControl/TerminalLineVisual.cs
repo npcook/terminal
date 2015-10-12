@@ -17,8 +17,23 @@ namespace npcook.Terminal.Controls
 		{ get; }
 
 		// The line this visual represents
+		TerminalLine line;
 		public TerminalLine Line
-		{ get; }
+		{
+			get { return line; }
+			set
+			{
+				if (line != null)
+					line.RunsChanged -= Line_RunsChanged;
+				line = value;
+				if (line != null)
+				{
+					savedRuns = line.Runs.ToArray();
+					line.RunsChanged += Line_RunsChanged;
+					redraw();
+				}
+			}
+		}
 
 		TerminalRun[] savedRuns = null;
 
@@ -40,13 +55,22 @@ namespace npcook.Terminal.Controls
 		{
 			this.Terminal = terminal;
 			this.Line = line;
+		}
 
-			if (line != null)
-				savedRuns = line.Runs.ToArray();
+		protected override void OnVisualParentChanged(DependencyObject oldParent)
+		{
+			base.OnVisualParentChanged(oldParent);
 
-			line.RunsChanged += Line_RunsChanged;
+			if (oldParent != null)
+				Line.RunsChanged -= Line_RunsChanged;
+			if (VisualParent != null)
+			{
+				if (Line != null)
+					savedRuns = Line.Runs.ToArray();
+				Line.RunsChanged += Line_RunsChanged;
 
-			redraw();
+				redraw();
+			}
 		}
 
 		private void Line_RunsChanged(object sender, EventArgs e)
