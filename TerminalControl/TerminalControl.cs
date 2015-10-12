@@ -32,8 +32,6 @@ namespace npcook.Terminal.Controls
 
 		public TerminalControl()
 		{
-			impl.SizeChanged += Impl_SizeChanged;
-
 			var familyBinding = new Binding("FontFamily");
 			familyBinding.Source = this;
 			impl.SetBinding(TerminalControlCore.FontFamilyProperty, familyBinding);
@@ -43,22 +41,15 @@ namespace npcook.Terminal.Controls
 			impl.SetBinding(TerminalControlCore.FontSizeProperty, sizeBinding);
 		}
 
-		private void Impl_SizeChanged(object sender, SizeChangedEventArgs e)
-		{
-			if (scrollViewer != null)
-			{
-				bool atEnd = scrollViewer.VerticalOffset == scrollViewer.ScrollableHeight;
-				if (atEnd)
-					scrollViewer.ScrollToBottom();
-            }
-		}
-
 		public override void OnApplyTemplate()
 		{
 			base.OnApplyTemplate();
 
 			if (scrollViewer != null)
+			{
 				scrollViewer.Content = null;
+				scrollViewer.ScrollChanged -= ScrollViewer_ScrollChanged;
+			}
 
 			if (Template == null)
 				scrollViewer = null;
@@ -66,9 +57,23 @@ namespace npcook.Terminal.Controls
 			{
 				scrollViewer = Template.FindName("PART_ScrollViewer", this) as ScrollViewer;
 				if (scrollViewer != null)
+				{
 					scrollViewer.Content = impl;
+					scrollViewer.CanContentScroll = true;
+					scrollViewer.ScrollChanged += ScrollViewer_ScrollChanged;
+				}
 				else
 					throw new InvalidCastException("PART_ScrollViewer must be a ScrollViewer");
+			}
+		}
+
+		private void ScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+		{
+			if (e.ExtentHeightChange != 0.0)
+			{
+				bool atEnd = scrollViewer.VerticalOffset + e.ExtentHeightChange == scrollViewer.ScrollableHeight;
+				if (atEnd)
+					scrollViewer.ScrollToBottom();
 			}
 		}
 
