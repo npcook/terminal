@@ -23,6 +23,8 @@ namespace npcook.Terminal.Controls
 			get { return line; }
 			set
 			{
+				if (line == value)
+					return;
 				if (line != null)
 					line.RunsChanged -= Line_RunsChanged;
 				line = value;
