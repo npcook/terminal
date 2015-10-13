@@ -49,7 +49,7 @@ namespace npcook.Terminal.Controls
 		{
 			if (size == backing.Length)
 				resize(size * GrowthMultiplier);
-			backing[end] = value;
+			backing[end % backing.Length] = value;
 			end = (end + 1) % backing.Length;
 			size++;
 		}
@@ -76,7 +76,7 @@ namespace npcook.Terminal.Controls
 			if (size == 0)
 				throw new InvalidOperationException("Cannot pop from an empty deque");
 
-			end = (end - 1) % backing.Length;
+			end = (end + backing.Length - 1) % backing.Length;
 			T value = backing[end];
 			backing[end] = default(T);
 			size--;
@@ -166,7 +166,7 @@ namespace npcook.Terminal.Controls
 		{
 			Array.Copy(backing, index, backing, index + 1, size - index);
 			backing[index] = value;
-			end++;
+			end = (end + 1) % backing.Length;
 			size++;
 		}
 
@@ -203,10 +203,8 @@ namespace npcook.Terminal.Controls
 				Array.Copy(backing, 1, backing, 0, size - index - 1 - copyCount);
 			}
 			size--;
-			end--;
-			if (end == -1)
-				end = backing.Length;
-			backing[size] = default(T);
+			end = (end + backing.Length - 1) % backing.Length;
+			backing[end] = default(T);
 		}
 
 		public struct Enumerator : IEnumerator<T>, IEnumerator
