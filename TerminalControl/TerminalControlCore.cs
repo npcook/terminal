@@ -76,7 +76,7 @@ namespace npcook.Terminal.Controls
 		// Backing for the scroll-back history
 		readonly Deque<TerminalLine> history = new Deque<TerminalLine>(historySize);
 		// Visuals for visible lines.  Always of size terminal.Size.Row
-		TerminalLineVisual[] visuals;
+		Deque<TerminalLineVisual> visuals;
 		// The terminal backing this visual representation
 		XtermTerminal terminal = null;
 		// Visual for the caret
@@ -109,15 +109,15 @@ namespace npcook.Terminal.Controls
 						RemoveVisualChild(visual);
 				}
 				history.Clear();
-				
-				visuals = new TerminalLineVisual[terminal.Size.Row];
+
+				visuals = new Deque<TerminalLineVisual>(terminal.Size.Row);
 				// Create new visuals for each line in the new terminal screen
 				foreach (var item in terminal.CurrentScreen.Select((line, i) => new { line, i }))
 				{
 					history.Add(item.line);
 					var visual = new TerminalLineVisual(this, item.line);
 					visual.Offset = new Vector(0.0, item.i * CharHeight);
-					visuals[item.i] = visual;
+					visuals.PushBack(visual);
 					AddVisualChild(visual);
 				}
 
@@ -299,7 +299,7 @@ namespace npcook.Terminal.Controls
 		{
 			double Y = hitTestParameters.HitPoint.Y;
 			int lineIndex = (int) (Y / CharHeight);
-			if (lineIndex < 0 || lineIndex >= visuals.Length)
+			if (lineIndex < 0 || lineIndex >= visuals.Count)
 				return null;
 			return new PointHitTestResult(visuals[lineIndex], hitTestParameters.HitPoint);
 		}
@@ -398,8 +398,6 @@ namespace npcook.Terminal.Controls
 			{
 				for (int i = 0; i < newLines; ++i)
 					history.PopFront();
-
-				verticalOffset -= newLines;
 			}
 		}
 
@@ -407,6 +405,8 @@ namespace npcook.Terminal.Controls
 		{
 			Dispatcher.Invoke(() =>
 			{
+				bool atEnd = VerticalOffset + ViewportHeight == ExtentHeight;
+				bool historyShifted = history.Count == historySize;
 				bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
 				int insertBase = e.AddedLinesIndex;
 
@@ -443,11 +443,21 @@ namespace npcook.Terminal.Controls
 					}
 					else
 						history.Insert(insertBase + i, line);
+					//var visual = visuals[e.RemovedLinesIndex + i];
+					//visuals.RemoveAt(e.RemovedLinesIndex + i);
+					//visual.Line = line;
+					//visuals.Insert(e.AddedLinesIndex + i, visual);
 					//newVisual.Offset = new Vector(0.0, (insertBase + i) * CharHeight);
 					//AddVisualChild(newVisual);
 				}
 
-				updateVisuals();
+				//foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+				//	item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+				if (addToHistory && historyShifted && !atEnd)
+					VerticalOffset -= 1;
+				else
+					updateVisuals();
+
 				ScrollOwner.InvalidateScrollInfo();
 			});
 		}
@@ -485,13 +495,15 @@ namespace npcook.Terminal.Controls
 				{
 					foreach (var line in terminal.CurrentScreen)
 						history.PopBack();
-					updateVisuals();
+					VerticalOffset -= ViewportHeight;
+					ScrollOwner.InvalidateScrollInfo();
 				}
 				else
 				{
 					foreach (var line in terminal.CurrentScreen)
 						history.PushBack(line);
 					updateVisuals();
+					ScrollOwner.InvalidateScrollInfo();
 				}
 
 				InvalidateMeasure();
@@ -514,7 +526,7 @@ namespace npcook.Terminal.Controls
 		protected override int VisualChildrenCount
 		{
 			// Each line is a child, plus 1 for the caret
-			get { return visuals.Length + 1; }
+			get { return visuals.Count + 1; }
 		}
 
 		protected override Visual GetVisualChild(int index)
@@ -523,7 +535,7 @@ namespace npcook.Terminal.Controls
 				throw new ArgumentOutOfRangeException("index", index, "");
 
 			// Make sure the caret comes last so it gets drawn over the lines
-			if (index < visuals.Length)
+			if (index < visuals.Count)
 				return visuals[index];
 			else
 				return caret;
@@ -677,7 +689,7 @@ namespace npcook.Terminal.Controls
 			get { return horizontalOffset; }
 			private set
 			{
-				horizontalOffset = value;
+				horizontalOffset = (int) value;
 				updateVisuals();
 			}
 		}
@@ -688,7 +700,21 @@ namespace npcook.Terminal.Controls
 			get { return verticalOffset; }
 			private set
 			{
+				int diff = (int) (value - verticalOffset);
 				verticalOffset = value;
+				for (int i = 0; i < diff; ++i)
+				{
+					var visual = visuals.PopFront();
+                    visuals.PushBack(visual);
+				}
+				for (int i = 0; i > diff; --i)
+				{
+					var visual = visuals.PopBack();
+					visuals.PushFront(visual);
+				}
+
+				foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+					item.visual.Offset = new Vector(0.0, item.i * CharHeight);
 				updateVisuals();
 			}
 		}
