@@ -245,13 +245,18 @@ namespace npcook.Terminal
 				}
 				totalIndex += run.Text.Length;
 			}
-			
+
+			Color black = Color.FromRgb(0, 0, 0);
+
 			for (int i = 0; i < runs.Count - 1; ++i)
 			{
 				var run1 = runs[i];
 				var run2 = runs[i + 1];
 
-				bool specialMerge = run2.Font.Hidden || run2.Text == " ";
+				bool specialMerge = 
+					run1.Font.Background == run2.Font.Background && 
+					!run1.Font.Inverse && 
+					(run2.Font.Hidden || run2.Text == " ");
 
 				if (run1.Font == run2.Font || specialMerge)
 				{
