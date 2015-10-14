@@ -229,27 +229,42 @@ namespace npcook.Terminal.Controls
 
 		string getSelectedText()
 		{
+			if (!selected)
+				return "";
+
 			var builder = new StringBuilder();
-			bool first = true;
-			foreach (var line in selectedLines)
+
+			if (selectionTop.Row == selectionBottom.Row)
+				builder.Append(history[selectionTop.Row].GetCharacters(selectionTop.Col, selectionBottom.Col - selectionBottom.Col));
+			else
 			{
-				if (first)
-					first = false;
-				else
-					builder.Append(Environment.NewLine);
-				builder.Append(line.Line.GetCharacters(line.SelectionStart, Math.Min(line.SelectionEnd - line.SelectionStart, line.Line.Length)));
+				for (int i = selectionTop.Row; i <= selectionBottom.Row; ++i)
+				{
+					var line = history[i];
+					bool first = i == selectionTop.Row;
+					bool last = i == selectionBottom.Row;
+					if (first)
+						builder.Append(line.GetCharacters(selectionTop.Col, line.Length - selectionTop.Col));
+					else if (last)
+						builder.Append(line.GetCharacters(0, selectionBottom.Col));
+					else
+						builder.Append(line.GetCharacters(0, line.Length));
+
+					if (!last)
+						builder.Append(Environment.NewLine);
+				}
 			}
 			return builder.ToString();
 		}
 
 		bool this_CanCopy(object _)
 		{
-			return selectedLines.Count > 0;
+			return selected;
 		}
 
 		void this_Copy(object _)
 		{
-			if (selectedLines.Count > 0)
+			if (selected)
 				Clipboard.SetText(getSelectedText());
 		}
 
@@ -309,62 +324,92 @@ namespace npcook.Terminal.Controls
 			return base.ArrangeOverride(finalSize);
 		}
 
+		bool selected = false;
 		bool selecting = false;
 		Point selectionStart;
-		List<TerminalLineVisual> selectedLines = new List<TerminalLineVisual>();
+		Point selectionEnd;
+
+		Point selectionTop
+		{
+			get
+			{
+				if (selectionStart.Row < selectionEnd.Row)
+					return selectionStart;
+				else if (selectionStart.Row > selectionEnd.Row)
+					return selectionEnd;
+				else if (selectionStart.Col < selectionEnd.Col)
+					return selectionStart;
+				else
+					return selectionEnd;
+			}
+		}
+		Point selectionBottom
+		{
+			get
+			{
+				if (selectionStart.Row < selectionEnd.Row)
+					return selectionEnd;
+				else if (selectionStart.Row > selectionEnd.Row)
+					return selectionStart;
+				else if (selectionStart.Col < selectionEnd.Col)
+					return selectionEnd;
+				else
+					return selectionStart;
+			}
+		}
+
 		protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
 		{
 			base.OnMouseLeftButtonDown(e);
 
 			var position = e.GetPosition(this);
-			selectionStart = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
+			selectionStart = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight + VerticalOffset));
+			selectionEnd = selectionStart;
 			selecting = true;
+			selected = false;
 
-			foreach (var line in selectedLines)
-				line.Select(0, 0);
-			selectedLines.Clear();
+			foreach (var visual in visuals)
+				visual.Select(0, 0);
 
 			CaptureMouse();
 		}
 
-/*		protected override void OnMouseMove(MouseEventArgs e)
+		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
 
 			if (selecting)
 			{
-				var newSelectedLines = new List<TerminalLineVisual>();
-
 				var position = e.GetPosition(this);
-				Point selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
+				int visualIndex = (int) (position.Y / CharHeight);
+				selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (visualIndex + VerticalOffset));
 
-				bool swapPoints = selectionStart.Row == selectionEnd.Row ? selectionStart.Col > selectionEnd.Col : selectionStart.Row > selectionEnd.Row;
+				updateSelectedVisuals();
+			}
+		}
 
-				Point firstPoint = swapPoints ? selectionEnd : selectionStart;
-				Point secondPoint = swapPoints ? selectionStart : selectionEnd;
-
-				if (firstPoint.Row == secondPoint.Row)
+		void updateSelectedVisuals()
+		{
+			if (!selecting && !selected)
+				return;
+			foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+			{
+				int historyIndex = (int) (item.i + VerticalOffset);
+				if (historyIndex >= selectionTop.Row && historyIndex <= selectionBottom.Row)
 				{
-					history[selectionStart.Row].Select(firstPoint.Col, secondPoint.Col);
-					newSelectedLines.Add(history[selectionStart.Row]);
+					bool first = historyIndex == selectionTop.Row;
+					bool last = historyIndex == selectionBottom.Row;
+					if (first && last)
+						item.visual.Select(selectionTop.Col, selectionBottom.Col);
+					else if (first)
+						item.visual.Select(selectionTop.Col, item.visual.Line.Length);
+					else if (last)
+						item.visual.Select(0, selectionBottom.Col);
+					else
+						item.visual.Select(0, item.visual.Line.Length);
 				}
 				else
-				{
-					for (int i = firstPoint.Row; i <= secondPoint.Row; ++i)
-					{
-						if (i == firstPoint.Row)
-							history[i].Select(firstPoint.Col, terminal.Size.Col);
-						else if (i == secondPoint.Row)
-							history[i].Select(0, secondPoint.Col);
-						else
-							history[i].Select(0, terminal.Size.Col);
-						newSelectedLines.Add(history[i]);
-					}
-				}
-
-				foreach (var line in selectedLines.Where(visual => !newSelectedLines.Contains(visual)))
-					line.Select(0, 0);
-				selectedLines = newSelectedLines;
+					item.visual.Select(0, 0);
 			}
 		}
 
@@ -372,9 +417,10 @@ namespace npcook.Terminal.Controls
 		{
 			base.OnMouseLeftButtonUp(e);
 
+			selected = selectionStart.Col != selectionEnd.Col || selectionStart.Row != selectionEnd.Row;
 			selecting = false;
 			ReleaseMouseCapture();
-		}*/
+		}
 
 		public Typeface GetFontTypeface(TerminalFont? font)
 		{
@@ -412,30 +458,18 @@ namespace npcook.Terminal.Controls
 
 				if (addToHistory)
 				{
-					//if (history.Count == historySize)
-					//	insertBase--;
 					prepareHistory(1);
 				}
 				else
 				{
-					/*for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
-					{
-						var visual = visuals[e.RemovedLinesIndex + i];
-						RemoveVisualChild(visual);
-					}*/
-
 					int removeBase = screenIndex + e.RemovedLinesIndex;
-					// Reversed loop because removal requires all succeeding lines to shift up.
-					// Removing the final lines first means less or no shifting has to happen.
 					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
 						history.RemoveAt(removeBase + i);
-					//Array.Copy(visuals, removeBase + Math.Abs(e.NewIndex - e.OldIndex), visuals, removeBase, visuals.Length - Math.Abs(e.NewIndex - e.OldIndex));
                 }
 
 				for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
 				{
 					var line = terminal.CurrentScreen[e.AddedLinesIndex + i];
-					//var newVisual = new TerminalLineVisual(this, line);
 					if (addToHistory)
 					{
 						history.PushBack(line);
@@ -443,16 +477,8 @@ namespace npcook.Terminal.Controls
 					}
 					else
 						history.Insert(insertBase + i, line);
-					//var visual = visuals[e.RemovedLinesIndex + i];
-					//visuals.RemoveAt(e.RemovedLinesIndex + i);
-					//visual.Line = line;
-					//visuals.Insert(e.AddedLinesIndex + i, visual);
-					//newVisual.Offset = new Vector(0.0, (insertBase + i) * CharHeight);
-					//AddVisualChild(newVisual);
 				}
-
-				//foreach (var item in visuals.Select((visual, i) => new { visual, i }))
-				//	item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+				
 				if (addToHistory && historyShifted && !atEnd)
 					VerticalOffset -= 1;
 				else
@@ -469,6 +495,8 @@ namespace npcook.Terminal.Controls
 				var line = history[(int) VerticalOffset + i];
 				visuals[i].Line = line;
 			}
+
+			updateSelectedVisuals();
 
 			updateCaret();
 		}
@@ -705,11 +733,13 @@ namespace npcook.Terminal.Controls
 				for (int i = 0; i < diff; ++i)
 				{
 					var visual = visuals.PopFront();
+					visual.Select(0, 0);
                     visuals.PushBack(visual);
 				}
 				for (int i = 0; i > diff; --i)
 				{
 					var visual = visuals.PopBack();
+					visual.Select(0, 0);
 					visuals.PushFront(visual);
 				}
 

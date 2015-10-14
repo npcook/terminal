@@ -47,6 +47,8 @@ namespace npcook.Terminal.Controls
 
 		public void Select(int start, int end)
 		{
+			if (SelectionStart == start && SelectionEnd == end)
+				return;
 			SelectionStart = start;
 			SelectionEnd = end;
 
