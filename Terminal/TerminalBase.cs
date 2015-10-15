@@ -173,7 +173,13 @@ namespace npcook.Terminal
 		public void ChangeToScreen(bool alternate)
 		{
 			if (alternate)
+			{
 				currentBuffer = altScreenBuffer;
+				foreach (var line in currentBuffer.Lines)
+				{
+					line.DeleteCharacters(0, line.Length);
+				}
+			}
 			else
 				currentBuffer = screenBuffer;
 
