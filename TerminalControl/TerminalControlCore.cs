@@ -478,9 +478,23 @@ namespace npcook.Terminal.Controls
 					else
 						history.Insert(insertBase + i, line);
 				}
-				
-				if (addToHistory && historyShifted && !atEnd)
-					VerticalOffset -= 1;
+
+				if (addToHistory && historyShifted)
+				{
+					if (!atEnd)
+						verticalOffset -= 1;
+					else
+					{
+						var firstVisual = visuals.PopFront();
+						firstVisual.Select(0, 0);
+						visuals.PushBack(firstVisual);
+
+						foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+							item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+
+						updateVisuals();
+					}
+				}
 				else
 					updateVisuals();
 

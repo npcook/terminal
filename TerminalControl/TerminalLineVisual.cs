@@ -32,7 +32,8 @@ namespace npcook.Terminal.Controls
 				{
 					savedRuns = line.Runs.ToArray();
 					line.RunsChanged += Line_RunsChanged;
-					redraw();
+
+					scheduleRedraw();
 				}
 			}
 		}
@@ -52,7 +53,7 @@ namespace npcook.Terminal.Controls
 			SelectionStart = start;
 			SelectionEnd = end;
 
-			redraw();
+			scheduleRedraw();
 		}
 
 		public TerminalLineVisual(TerminalControlCore terminal, TerminalLine line)
@@ -73,7 +74,7 @@ namespace npcook.Terminal.Controls
 					savedRuns = Line.Runs.ToArray();
 				Line.RunsChanged += Line_RunsChanged;
 
-				redraw();
+				scheduleRedraw();
 			}
 		}
 
@@ -83,7 +84,11 @@ namespace npcook.Terminal.Controls
 			{
 				savedRuns = Line.Runs.ToArray();
 			}
-			// Redraw all this line's runs
+			scheduleRedraw();
+		}
+
+		void scheduleRedraw()
+		{
 			Action action = () => Dispatcher.Invoke(redraw);
 			if (Terminal.DeferChanges)
 				Terminal.AddDeferChangesCallback(this, action);
