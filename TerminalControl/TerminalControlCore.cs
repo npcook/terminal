@@ -454,7 +454,7 @@ namespace npcook.Terminal.Controls
 				bool atEnd = VerticalOffset + ViewportHeight == ExtentHeight;
 				bool historyShifted = history.Count == historySize;
 				bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
-				int insertBase = e.AddedLinesIndex;
+				int insertBase = screenIndex + e.AddedLinesIndex;
 
 				if (addToHistory)
 				{
@@ -544,7 +544,6 @@ namespace npcook.Terminal.Controls
 				{
 					foreach (var line in terminal.CurrentScreen)
 						history.PushBack(line);
-					updateVisuals();
 					ScrollOwner.InvalidateScrollInfo();
 				}
 
@@ -588,16 +587,9 @@ namespace npcook.Terminal.Controls
 			int adjustedRowPos = terminal.CursorPos.Row + (int) (ExtentHeight - ViewportHeight - VerticalOffset);
 			if (terminal != null)
 			{
-				if (adjustedRowPos >= Terminal.Size.Row)
-				{
-					// Move the cursor outside of the viewport so it isn't visible
-					caret.Offset = new Vector(-1, -1);
-				}
-				else
-				{
-					// Add 0.5 to each dimension so the caret is aligned to pixels
-					caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * adjustedRowPos) + 0.5);
-				}
+				// Add 0.5 to each dimension so the caret is aligned to pixels
+				// It's possible the caret is offscreen after this if adjustedRowPos > ViewportHeight
+				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * adjustedRowPos) + 0.5);
 			}
 
 			if (ShowCursor && BlinkCursorCore)
@@ -611,13 +603,18 @@ namespace npcook.Terminal.Controls
 		Dictionary<Color, SolidColorBrush> brushCache = new Dictionary<Color, SolidColorBrush>();
 		internal SolidColorBrush GetBrush(Color color)
 		{
+			const int MaxCacheSize = 512;
+
 			SolidColorBrush brush;
 			if (brushCache.TryGetValue(color, out brush))
 				return brush;
 
+			if (brushCache.Count == MaxCacheSize)
+				brushCache.Clear();
 			brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color.R, color.G, color.B));
 			brush.Freeze();
 			brushCache.Add(color, brush);
+
 			return brush;
 		}
 
