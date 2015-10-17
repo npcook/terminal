@@ -447,6 +447,7 @@ namespace npcook.Terminal
 
 				case XtermDecMode.UseAltScreenAndSaveCursor:
 					mainScreenSavedCursorPos = CursorPos;
+					CursorPos = new Point(0, 0);
 					ChangeToScreen(true);
 					break;
 
