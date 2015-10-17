@@ -173,16 +173,21 @@ namespace npcook.Terminal.Controls
 
 		public void Insert(int index, T value)
 		{
-			if (index < 0 || index >= size)
+			if (index < 0 || index > size)
 				throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
 			if (size == backing.Length)
 				resize(size * GrowthMultiplier);
 
 			int actualIndex = (start + index) % backing.Length;
-			bool contiguous = end > actualIndex;
+			if (actualIndex == end)
+			{
+				PushBack(value);
+				return;
+			}
+			bool contiguous = end > actualIndex && end != backing.Length - 1;
 			if (contiguous)
 			{
-				Array.Copy(backing, actualIndex, backing, actualIndex + 1, size - actualIndex);
+				Array.Copy(backing, actualIndex, backing, actualIndex + 1, end - actualIndex);
 			}
 			else
 			{

@@ -496,7 +496,26 @@ namespace npcook.Terminal.Controls
 					}
 				}
 				else
+				{
+					int removeBase = e.RemovedLinesIndex;
+					insertBase = e.AddedLinesIndex;
+					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+					{
+						var visual = visuals[removeBase + i];
+						if (insertBase > removeBase)
+							insertBase--;
+						visuals.RemoveAt(removeBase + i);
+						visual.Select(0, 0);
+						visuals.Insert(insertBase + i, visual);
+						if (removeBase > insertBase)
+							removeBase++;
+					}
+
+					foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+						item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+
 					updateVisuals();
+				}
 
 				ScrollOwner.InvalidateScrollInfo();
 			});
