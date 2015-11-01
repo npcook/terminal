@@ -77,6 +77,8 @@ namespace npcook.Terminal.Controls
 		readonly Deque<TerminalLine> history = new Deque<TerminalLine>(historySize);
 		// Visuals for visible lines.  Always of size terminal.Size.Row
 		Deque<TerminalLineVisual> visuals;
+		// Extra visuals.
+		Deque<TerminalLineVisual> extraVisuals;
 		// The terminal backing this visual representation
 		XtermTerminal terminal = null;
 		// Visual for the caret
@@ -111,6 +113,7 @@ namespace npcook.Terminal.Controls
 				history.Clear();
 
 				visuals = new Deque<TerminalLineVisual>(terminal.Size.Row);
+				extraVisuals = new Deque<TerminalLineVisual>(terminal.Size.Row);
 				// Create new visuals for each line in the new terminal screen
 				foreach (var item in terminal.CurrentScreen.Select((line, i) => new { line, i }))
 				{
@@ -119,6 +122,9 @@ namespace npcook.Terminal.Controls
 					visual.Offset = new Vector(0.0, item.i * CharHeight);
 					visuals.PushBack(visual);
 					AddVisualChild(visual);
+
+					visual = new TerminalLineVisual(this, null);
+					extraVisuals.PushBack(visual);
 				}
 
 				terminal.CursorPosChanged += Terminal_CursorPosChanged;
@@ -438,13 +444,23 @@ namespace npcook.Terminal.Controls
 
 		private void prepareHistory(int newLines)
 		{
-			bool needsMeasure = history.Count < historySize;
-
-			if (history.Count + newLines == historySize + 1)
+			while (history.Count + newLines > historySize)
 			{
-				for (int i = 0; i < newLines; ++i)
-					history.PopFront();
+				history.PopFront();
 			}
+		}
+
+		private TerminalLineVisual recycleVisual(TerminalLineVisual visual)
+		{
+			RemoveVisualChild(visual);
+			visual.Line = null;
+			visual.Select(0, 0);
+			visual.Offset = new Vector(-1000, -1000);
+
+			var newVisual = extraVisuals.PopFront();
+			extraVisuals.PushBack(visual);
+			AddVisualChild(newVisual);
+			return newVisual;
 		}
 
 		private void Terminal_LinesMoved(object sender, LinesMovedEventArgs e)
@@ -479,21 +495,20 @@ namespace npcook.Terminal.Controls
 						history.Insert(insertBase + i, line);
 				}
 
-				if (addToHistory && historyShifted)
+				if (addToHistory)
 				{
-					if (!atEnd)
-						verticalOffset -= 1;
-					else
+					if (historyShifted)
 					{
-						var firstVisual = visuals.PopFront();
-						firstVisual.Select(0, 0);
-						visuals.PushBack(firstVisual);
-
-						foreach (var item in visuals.Select((visual, i) => new { visual, i }))
-							item.visual.Offset = new Vector(0.0, item.i * CharHeight);
-
-						updateVisuals();
+						if (!atEnd)
+							verticalOffset -= 1;
+						else
+						{
+							shiftVisuals(1, 0, terminal.Size.Row - 1);
+							updateVisuals();
+						}
 					}
+					else
+						scrollOwner.ScrollToBottom();
 				}
 				else
 				{
@@ -505,19 +520,14 @@ namespace npcook.Terminal.Controls
 						if (insertBase > removeBase)
 							insertBase--;
 						visuals.RemoveAt(removeBase + i);
-						visual.Select(0, 0);
-						visuals.Insert(insertBase + i, visual);
+						visuals.Insert(insertBase + i, recycleVisual(visual));
 						if (removeBase > insertBase)
 							removeBase++;
 					}
 
-					foreach (var item in visuals.Select((visual, i) => new { visual, i }))
-						item.visual.Offset = new Vector(0.0, item.i * CharHeight);
-
 					updateVisuals();
+//					scrollOwner.ScrollToBottom();
 				}
-
-				ScrollOwner.InvalidateScrollInfo();
 			});
 		}
 
@@ -528,6 +538,9 @@ namespace npcook.Terminal.Controls
 				var line = history[(int) VerticalOffset + i];
 				visuals[i].Line = line;
 			}
+
+			foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+				item.visual.Offset = new Vector(0.0, item.i * CharHeight);
 
 			updateSelectedVisuals();
 
@@ -556,17 +569,22 @@ namespace npcook.Terminal.Controls
 				{
 					foreach (var line in terminal.CurrentScreen)
 						history.PopBack();
-					VerticalOffset -= ViewportHeight;
-					ScrollOwner.InvalidateScrollInfo();
+					SetVerticalOffset(VerticalOffset);
 				}
 				else
 				{
+					bool atEnd = false;
+					if (VerticalOffset + ViewportHeight == ExtentHeight)
+						atEnd = true;
+					prepareHistory(terminal.Size.Row);
 					foreach (var line in terminal.CurrentScreen)
 						history.PushBack(line);
-					ScrollOwner.InvalidateScrollInfo();
+					if (atEnd)
+					{
+						verticalOffset--;
+						scrollOwner.ScrollToBottom();
+					}
 				}
-
-				InvalidateMeasure();
 			});
 		}
 
@@ -653,37 +671,61 @@ namespace npcook.Terminal.Controls
 		}
 
 		// Bulk changes can be deferred to avoid redundantly updating visuals
-		internal bool DeferChanges
-		{ get; private set; }
+		private bool DeferChanges
+		{ get; set; }
 
+		object deferChangesLock = new object();
 		Dictionary<object, Action> deferChangesCallbacks = new Dictionary<object, Action>();
 
 		// Begin a group of changes
 		public void BeginChange()
 		{
-			DeferChanges = true;
+			lock (deferChangesLock)
+			{
+				DeferChanges = true;
+			}
 		}
 
 		// End a group of changes and update all visuals in one swoop
 		public void EndChange()
 		{
-			if (!DeferChanges)
-				throw new InvalidOperationException("Must be deferring changes before deferring changes can end");
-
-			DeferChanges = false;
-			foreach (var kvp in deferChangesCallbacks)
-				kvp.Value();
-			deferChangesCallbacks.Clear();
+			IEnumerable<Action> callbacks = Enumerable.Empty<Action>();
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+				{
+					DeferChanges = false;
+					callbacks = deferChangesCallbacks.Values.ToArray();
+					deferChangesCallbacks.Clear();
+				}
+			}
+			foreach (var callback in callbacks)
+				callback();
 		}
 
 		// Register a delegate to be called when changes should be applied.  If the same callee
 		// is passed multiple times, the last callback overwrites the previous callbacks
 		public void AddDeferChangesCallback(object callee, Action callback)
 		{
-			if (!DeferChanges)
-				throw new InvalidOperationException("Must be deferring changes before a callback can be added");
+			bool callNow = false;
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+					deferChangesCallbacks[callee] = callback;
+				else
+					callNow = true;
+			}
+			if (callNow)
+				callback();
+		}
 
-			deferChangesCallbacks[callee] = callback;
+		public void RemoveDeferChangesCallback(object callee)
+		{
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+					deferChangesCallbacks.Remove(callee);
+			}
 		}
 
 		public void AddMessage(string text, TerminalFont font)
@@ -752,29 +794,44 @@ namespace npcook.Terminal.Controls
 			}
 		}
 
+		void shiftVisuals(int index, int newIndex, int count)
+		{
+			if (newIndex > index)
+			{
+				for (int i = 0; i < newIndex - index; ++i)
+				{
+					var visual = visuals[newIndex + count - 1];
+					visual.Select(0, 0);
+					visuals.RemoveAt(newIndex + count - 1);
+					visuals.Insert(index, recycleVisual(visual));
+				}
+			}
+			else
+			{
+				for (int i = 0; i < index - newIndex; ++i)
+				{
+					var visual = visuals[newIndex];
+					visual.Select(0, 0);
+					visuals.RemoveAt(newIndex);
+					visuals.Insert(index + count - 1, recycleVisual(visual));
+				}
+			}
+		}
+
 		double verticalOffset;
 		public double VerticalOffset
 		{
 			get { return verticalOffset; }
 			private set
 			{
+				if ((int) (value + 0.5) == (int) (verticalOffset + 0.5))
+					return;
 				int diff = (int) (value - verticalOffset);
 				verticalOffset = value;
-				for (int i = 0; i < diff; ++i)
-				{
-					var visual = visuals.PopFront();
-					visual.Select(0, 0);
-                    visuals.PushBack(visual);
-				}
-				for (int i = 0; i > diff; --i)
-				{
-					var visual = visuals.PopBack();
-					visual.Select(0, 0);
-					visuals.PushFront(visual);
-				}
-
-				foreach (var item in visuals.Select((visual, i) => new { visual, i }))
-					item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+				if (diff > 0)
+					shiftVisuals(diff, 0, visuals.Count - diff);
+				else if (diff < 0)
+					shiftVisuals(0, -diff, visuals.Count + diff);
 				updateVisuals();
 			}
 		}

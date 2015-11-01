@@ -48,7 +48,6 @@ namespace npcook.Terminal.Controls
 			if (scrollViewer != null)
 			{
 				scrollViewer.Content = null;
-				scrollViewer.ScrollChanged -= ScrollViewer_ScrollChanged;
 			}
 
 			if (Template == null)
@@ -60,20 +59,9 @@ namespace npcook.Terminal.Controls
 				{
 					scrollViewer.Content = impl;
 					scrollViewer.CanContentScroll = true;
-					scrollViewer.ScrollChanged += ScrollViewer_ScrollChanged;
 				}
 				else
 					throw new InvalidCastException("PART_ScrollViewer must be a ScrollViewer");
-			}
-		}
-
-		private void ScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-		{
-			if (e.ExtentHeightChange != 0.0)
-			{
-				bool atEnd = scrollViewer.VerticalOffset + e.ExtentHeightChange == scrollViewer.ScrollableHeight;
-				if (atEnd)
-					scrollViewer.ScrollToBottom();
 			}
 		}
 

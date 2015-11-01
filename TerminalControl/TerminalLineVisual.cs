@@ -25,6 +25,7 @@ namespace npcook.Terminal.Controls
 			{
 				if (line == value)
 					return;
+				bool wasNull = line == null;
 				if (line != null)
 					line.RunsChanged -= Line_RunsChanged;
 				line = value;
@@ -33,8 +34,11 @@ namespace npcook.Terminal.Controls
 					savedRuns = line.Runs.ToArray();
 					line.RunsChanged += Line_RunsChanged;
 
-					scheduleRedraw();
+					Terminal.RemoveDeferChangesCallback(this);
+					redraw();
 				}
+				else
+					savedRuns = new TerminalRun[0];
 			}
 		}
 
@@ -66,15 +70,17 @@ namespace npcook.Terminal.Controls
 		{
 			base.OnVisualParentChanged(oldParent);
 
-			if (oldParent != null)
-				Line.RunsChanged -= Line_RunsChanged;
-			if (VisualParent != null)
+			if (Line != null)
 			{
-				if (Line != null)
+				if (oldParent != null)
+					Line.RunsChanged -= Line_RunsChanged;
+				if (VisualParent != null)
+				{
 					savedRuns = Line.Runs.ToArray();
-				Line.RunsChanged += Line_RunsChanged;
+					Line.RunsChanged += Line_RunsChanged;
 
-				scheduleRedraw();
+					scheduleRedraw();
+				}
 			}
 		}
 
@@ -90,10 +96,7 @@ namespace npcook.Terminal.Controls
 		void scheduleRedraw()
 		{
 			Action action = () => Dispatcher.Invoke(redraw);
-			if (Terminal.DeferChanges)
-				Terminal.AddDeferChangesCallback(this, action);
-			else
-				action();
+			Terminal.AddDeferChangesCallback(this, action);
 		}
 
 		private void redraw()
@@ -171,6 +174,8 @@ namespace npcook.Terminal.Controls
 			}
 
 			context.Close();
+
+			Opacity = 1.0;
 		}
 	}
 }
