@@ -505,13 +505,6 @@ namespace npcook.Terminal
 		int scrollRegionTop = 0;
 		int scrollRegionBottom = int.MaxValue;
 
-		struct CsiHandler
-		{
-			public char Symbol;
-			public string Name;
-			public string Description;
-		}
-
 		bool handleCsi(string sequence)
 		{
 			bool handled = true;
@@ -788,16 +781,16 @@ namespace npcook.Terminal
 			return handled;
 		}
 
-		bool applicationKeypad = false;
+		//bool applicationKeypad = false;
 		bool handleSingleEscape(char kind)
 		{
 			bool handled = true;
 			string sequence = new string(kind, 1);
-			if (kind == '=')
-				applicationKeypad = true;
-			else if (kind == '>')
-				applicationKeypad = false;
-			else if (kind == '7')
+			//if (kind == '=')
+			//	applicationKeypad = true;
+			//else if (kind == '>')
+			//	applicationKeypad = false;
+			if (kind == '7')
 				savedCursorPos = CursorPos;
 			else if (kind == '8')
 				CursorPos = savedCursorPos;
