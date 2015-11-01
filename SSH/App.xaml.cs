@@ -37,26 +37,14 @@ namespace npcook.Ssh
 			var dialog = new ConnectionDialog();
 			if (dialog.ShowDialog().GetValueOrDefault(false))
 			{
-				/*var fileWindow = new FileWindow();
+				var fileWindow = new FileWindow();
 				MainWindow = fileWindow;
 
 				var client = new Renci.SshNet.SftpClient(dialog.Connection.Client.ConnectionInfo);
 				client.Connect();
 				fileWindow.Connect(client);
 				ShutdownMode = ShutdownMode.OnLastWindowClose;
-				fileWindow.Show();*/
-				
-				var mainWindow = new MainWindow();
-				MainWindow = mainWindow;
-
-				var authList = new List<Authentication>();
-				if (dialog.Password != "")
-					authList.Add(new PasswordAuthentication(dialog.Password));
-				if (dialog.KeyFilePath != "")
-					authList.Add(new KeyAuthentication(File.Open(dialog.KeyFilePath, FileMode.Open), dialog.KeyFilePassphrase.ToString()));
-
-				mainWindow.Connect(dialog.Connection.Stream);
-				mainWindow.Show();
+				fileWindow.Show();
 				ShutdownMode = ShutdownMode.OnLastWindowClose;
 			}
 			else

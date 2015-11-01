@@ -43,15 +43,61 @@ namespace npcook.Ssh
 			remoteFilesList.ItemsSource = remoteFiles;
 		}
 
+		class DirectoryComparer : IComparer<bool>
+		{
+			public int Compare(bool x, bool y)
+			{
+				if (x == y)
+					return 0;
+				else if (x && !y)
+					return -1;
+				else
+					return 1;
+			}
+		}
+
 		public void Connect(SftpClient client)
 		{
 			this.client = client;
-			localPath = Directory.GetCurrentDirectory();
+			changeLocalDirectory(Directory.GetCurrentDirectory());
+			changeRemoteDirectory(null);
+        }
+
+		private void changeLocalDirectory(string newPath)
+		{
+			localPath = newPath;
 			foreach (var filename in Directory.GetFiles(localPath))
 				localFiles.Add(new LocalFile { Name = System.IO.Path.GetFileName(filename) });
+		}
 
-			foreach (var file in client.ListDirectory(client.WorkingDirectory))
+		private void changeRemoteDirectory(string newPath)
+		{
+			if (newPath != null)
+				client.ChangeDirectory(newPath);
+			remoteFiles.Clear();
+
+			var directories =
+				client
+				.ListDirectory(client.WorkingDirectory)
+				.Where(file => !file.Name.StartsWith(".") || file.Name == "..")
+				.OrderBy(file => file.IsDirectory, new DirectoryComparer())
+				.ThenBy(file => file.Name);
+
+			foreach (var file in directories)
 				remoteFiles.Add(file);
-        }
+		}
+
+		private void localFilesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+		{
+		}
+
+		private void remoteFilesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+		{
+			var item = remoteFilesList.SelectedItem as SftpFile;
+			if (item != null && item.IsDirectory)
+			{
+				changeRemoteDirectory(item.FullName);
+			}
+		}
 	}
 }
