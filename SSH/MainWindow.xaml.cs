@@ -147,6 +147,7 @@ namespace npcook.Ssh
 			{
 				Dispatcher.Invoke(() => Title = e.Title);
 			};
+			terminalControl.Terminal.SizeChanged += Terminal_SizeChanged;
 
 			Terminal_SizeChanged(this, EventArgs.Empty);
 
@@ -199,15 +200,6 @@ namespace npcook.Ssh
 			resizeTerminal(terminalControl.Terminal.Size.Col, terminalControl.Terminal.Size.Row);
 		}
 
-		[StructLayout(LayoutKind.Sequential)]
-		struct RECT
-		{
-			public int left;
-			public int top;
-			public int right;
-			public int bottom;
-		}
-
 		private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
 		{
 			const int WM_SIZING = 0x0214;
@@ -219,14 +211,30 @@ namespace npcook.Ssh
 				double horizontalStop = stops.X;
 				double verticalStop = stops.Y;
 
-				RECT rect = (RECT) Marshal.PtrToStructure(lParam, typeof(RECT));
+				var terminalOffset = terminalControl.TransformToAncestor(PresentationSource.FromVisual(this).RootVisual).Transform(new System.Windows.Point(0, 0));
 
-				rect.right = rect.left + (int) (Math.Floor((rect.right - rect.left + 1) / horizontalStop) * horizontalStop);
-				rect.bottom = rect.top + (int) (Math.Floor((rect.bottom - rect.top + 1) / verticalStop) * verticalStop);
+				var rect = (NativeMethods.RECT) Marshal.PtrToStructure(lParam, typeof(NativeMethods.RECT));
+
+				NativeMethods.RECT clientRect;
+				NativeMethods.GetClientRect(hwnd, out clientRect);
+				terminalOffset.X += 2 * SystemParameters.BorderWidth + SystemParameters.ScrollWidth;
+				terminalOffset.Y += SystemParameters.CaptionHeight + SystemParameters.BorderWidth;//rect.bottom - rect.top - (clientRect.bottom - clientRect.top);
+
+				int newCols = (int) Math.Floor((rect.right - rect.left - terminalOffset.X + 1) / horizontalStop);
+				int newRows = (int) Math.Floor((rect.bottom - rect.top - terminalOffset.Y + 1) / verticalStop);
+
+				rect.right = rect.left + (int) (newCols * horizontalStop + terminalOffset.X);
+				rect.bottom = rect.top + (int) (newRows * verticalStop + terminalOffset.Y);
 
 				Marshal.StructureToPtr(rect, lParam, false);
 
 				handled = true;
+
+				if (newCols != terminalControl.Terminal.Size.Col || newRows != terminalControl.Terminal.Size.Row)
+				{
+					stream.Channel.SendWindowChangeRequest((uint) newCols, (uint) newRows, 0, 0);
+					terminalControl.Terminal.Size = new Terminal.Point(newCols, newRows);
+				}
 
 				return (IntPtr) 1;
 			}

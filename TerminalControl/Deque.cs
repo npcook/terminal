@@ -101,7 +101,11 @@ namespace npcook.Terminal.Controls
 
 		void resize(int capacity)
 		{
-			throw new NotImplementedException();
+			T[] newBacking = new T[capacity];
+			CopyTo(newBacking, 0);
+			backing = newBacking;
+			start = 0;
+			end = size;
 		}
 
 		public int Count

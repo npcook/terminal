@@ -558,7 +558,32 @@ namespace npcook.Terminal.Controls
 		}
 
 		private void Terminal_SizeChanged(object sender, EventArgs e)
-		{ }
+		{
+			int rowDiff = terminal.Size.Row - visuals.Count;
+			for (int i = 0; i < rowDiff; ++i)
+			{
+				var newVisual = new TerminalLineVisual(this, terminal.CurrentScreen[terminal.Size.Row - 1]);
+				visuals.PushBack(newVisual);
+				AddVisualChild(newVisual);
+
+				newVisual = new TerminalLineVisual(this, null);
+				extraVisuals.PushBack(newVisual);
+			}
+			
+			for (int i = 0; i > rowDiff; --i)
+			{
+				var oldVisual = visuals.PopFront();
+				RemoveVisualChild(oldVisual);
+				oldVisual.Line = null;
+
+				extraVisuals.PopFront();
+			}
+
+			SetVerticalOffset(verticalOffset - Math.Abs(rowDiff));
+
+			InvalidateMeasure();
+			ScrollOwner.InvalidateScrollInfo();
+		}
 
 		private void Terminal_ScreenChanged(object sender, EventArgs e)
 		{

@@ -7,7 +7,7 @@
         xmlns:term="clr-namespace:npcook.Terminal.Controls;assembly=npcook.Terminal.Controls"
         mc:Ignorable="d"
         Title="MainWindow" SizeToContent="WidthAndHeight" FocusManager.FocusedElement="{Binding ElementName=terminalControl}" GotKeyboardFocus="OnKeyboardFocus">
-    <StackPanel Orientation="Vertical">
+    <StackPanel x:Name="root" Orientation="Vertical">
         <ToolBar x:Name="toolBar">
             <Button Content="Connect" Height="22" VerticalAlignment="Top" Width="75" Click="connect_click"/>
         </ToolBar>
