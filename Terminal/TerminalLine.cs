@@ -9,8 +9,24 @@ namespace npcook.Terminal
 	public class TerminalLine
 	{
 		List<TerminalRun> runs = new List<TerminalRun>();
+		TerminalRun[] savedRuns;
 		public IReadOnlyList<TerminalRun> Runs
-		{ get { return runs; } }
+		{
+			get
+			{
+				var oldSavedRuns = savedRuns;
+				if (oldSavedRuns == null)
+				{
+					lock (this)
+					{
+						if (savedRuns == null)
+							savedRuns = runs.ToArray();
+						oldSavedRuns = savedRuns;
+					}
+				}
+				return oldSavedRuns;
+			}
+		}
 
 		public event EventHandler<EventArgs> RunsChanged;
 		public TerminalLine()
@@ -50,66 +66,75 @@ namespace npcook.Terminal
 
 		void extend(int toLength)
 		{
-			if (runs.Count == 0)
-				runs.Add(new TerminalRun(new string(' ', toLength), new TerminalFont() { Hidden = true }));
-			else
+			lock (this)
 			{
-				var lastRun = runs[runs.Count - 1];
-				lastRun.Text = lastRun.Text + new string(' ', toLength - Length);
-			}
+				if (runs.Count == 0)
+					runs.Add(new TerminalRun(new string(' ', toLength), new TerminalFont() { Hidden = true }));
+				else
+				{
+					var lastRun = runs[runs.Count - 1];
+					lastRun.Text = lastRun.Text + new string(' ', toLength - Length);
+				}
 
-			length = toLength;
+				length = toLength;
+
+				savedRuns = null;
+			}
 		}
 
 		public void InsertCharacters(int index, string chars, TerminalFont font)
 		{
-			if (chars.Length == 0)
-				return;
-			if (length < index)
-				extend(index);
-
-			int runIndex = 0;
-			for (int i = 0; i < runs.Count; ++i)
+			lock (this)
 			{
-				var run = runs[i];
+				if (chars.Length == 0)
+					return;
+				if (length < index)
+					extend(index);
 
-				if (runIndex + run.Text.Length >= index)
+				int runIndex = 0;
+				for (int i = 0; i < runs.Count; ++i)
 				{
-					if (run.Font == font)
-					{
-						run.Text = run.Text.Insert(index - runIndex, chars);
-					}
-					else
-					{
-						var newRun = new TerminalRun()
-						{
-							Text = chars,
-							Font = font
-						};
+					var run = runs[i];
 
-						var splitRun = new TerminalRun()
+					if (runIndex + run.Text.Length >= index)
+					{
+						if (run.Font == font)
 						{
-							Text = run.Text.Substring(index - runIndex),
-							Font = run.Font
-						};
-						run.Text = run.Text.Substring(0, index - runIndex);
-						if (run.Text.Length == 0)
-						{
-							run.Text = newRun.Text;
-							run.Font = newRun.Font;
-
-							if (splitRun.Text.Length > 0)
-								runs.Insert(i + 1, splitRun);
+							run.Text = run.Text.Insert(index - runIndex, chars);
 						}
-						else if (splitRun.Text.Length > 0)
-							runs.InsertRange(i + 1, new[] { newRun, splitRun });
 						else
-							runs.Insert(i + 1, newRun);
-					}
-					break;
-				}
+						{
+							var newRun = new TerminalRun()
+							{
+								Text = chars,
+								Font = font
+							};
 
-				runIndex += run.Text.Length;
+							var splitRun = new TerminalRun()
+							{
+								Text = run.Text.Substring(index - runIndex),
+								Font = run.Font
+							};
+							run.Text = run.Text.Substring(0, index - runIndex);
+							if (run.Text.Length == 0)
+							{
+								run.Text = newRun.Text;
+								run.Font = newRun.Font;
+
+								if (splitRun.Text.Length > 0)
+									runs.Insert(i + 1, splitRun);
+							}
+							else if (splitRun.Text.Length > 0)
+								runs.InsertRange(i + 1, new[] { newRun, splitRun });
+							else
+								runs.Insert(i + 1, newRun);
+						}
+						break;
+					}
+
+					runIndex += run.Text.Length;
+				}
+				savedRuns = null;
 			}
 
 			if (RunsChanged != null)
@@ -118,48 +143,52 @@ namespace npcook.Terminal
 
 		public void DeleteCharacters(int deleteIndex, int deleteLength)
 		{
-			if (deleteLength == 0)
-				return;
-
-			length -= deleteLength;
-
-			int runIndex = 0;
-			for (int i = 0; i < runs.Count; ++i)
+			lock (this)
 			{
-				var run = runs[i];
+				if (deleteLength == 0)
+					return;
 
-				// Deleting the middle of a run
-				if (deleteIndex >= runIndex && deleteIndex + deleteLength < runIndex + run.Text.Length)
+				length -= deleteLength;
+
+				int runIndex = 0;
+				for (int i = 0; i < runs.Count; ++i)
 				{
-					run.Text = run.Text.Substring(0, deleteIndex - runIndex) + run.Text.Substring(deleteIndex + deleteLength - runIndex);
-					if (run.Text.Length == 0)
+					var run = runs[i];
+
+					// Deleting the middle of a run
+					if (deleteIndex >= runIndex && deleteIndex + deleteLength < runIndex + run.Text.Length)
+					{
+						run.Text = run.Text.Substring(0, deleteIndex - runIndex) + run.Text.Substring(deleteIndex + deleteLength - runIndex);
+						if (run.Text.Length == 0)
+							runs.RemoveAt(i);
+						break;
+					}
+
+					// Deleting the ending of a run
+					if (deleteIndex > runIndex && deleteIndex < runIndex + run.Text.Length && deleteIndex + deleteLength >= runIndex + run.Text.Length)
+					{
+						int remainingCount = deleteIndex - runIndex;
+						deleteLength -= run.Text.Length - remainingCount;
+						run.Text = run.Text.Substring(0, remainingCount);
+						runIndex += run.Text.Length;
+					}
+					// Deleting an entire run
+					else if (deleteIndex <= runIndex && deleteIndex + deleteLength >= runIndex + run.Text.Length)
+					{
 						runs.RemoveAt(i);
-					break;
+						i--;
+						deleteLength -= run.Text.Length;
+					}
+					// Deleting the beginning of a run
+					else if (runIndex >= deleteIndex)
+					{
+						run.Text = run.Text.Substring(deleteIndex + deleteLength - runIndex);
+						break;
+					}
+					else
+						runIndex += run.Text.Length;
 				}
-
-				// Deleting the ending of a run
-				if (deleteIndex > runIndex && deleteIndex < runIndex + run.Text.Length && deleteIndex + deleteLength >= runIndex + run.Text.Length)
-				{
-					int remainingCount = deleteIndex - runIndex;
-					deleteLength -= run.Text.Length - remainingCount;
-					run.Text = run.Text.Substring(0, remainingCount);
-					runIndex += run.Text.Length;
-				}
-				// Deleting an entire run
-				else if (deleteIndex <= runIndex && deleteIndex + deleteLength >= runIndex + run.Text.Length)
-				{
-					runs.RemoveAt(i);
-					i--;
-					deleteLength -= run.Text.Length;
-				}
-				// Deleting the beginning of a run
-				else if (runIndex >= deleteIndex)
-				{
-					run.Text = run.Text.Substring(deleteIndex + deleteLength - runIndex);
-					break;
-				}
-				else
-					runIndex += run.Text.Length;
+				savedRuns = null;
 			}
 
 			if (RunsChanged != null)
@@ -186,87 +215,88 @@ namespace npcook.Terminal
 		/// <param name="font"></param>
 		public void SetCharacters(int index, string chars, TerminalFont font)
 		{
-			if (chars.Length == 0)
-				return;
-			if (length < index + chars.Length)
-				extend(index + chars.Length);
-//			if (index + chars.Length >= colCount)
-//				return;
-			//throw new ArgumentOutOfRangeException("index", index, "blah");
-
-			int totalIndex = 0;
-			for (int i = 0; i < runs.Count; ++i)
+			lock (this)
 			{
-				var run = runs[i];
+				if (chars.Length == 0)
+					return;
+				if (length < index + chars.Length)
+					extend(index + chars.Length);
 
-				// Completely replacing an existing run
-				if (index == totalIndex && chars.Length == run.Text.Length)
+				int totalIndex = 0;
+				for (int i = 0; i < runs.Count; ++i)
 				{
-					run.Text = chars;
-					run.Font = font;
+					var run = runs[i];
 
-					break;
-				}
-				// Inside an existing run
-				else if (index >= totalIndex && index < totalIndex + run.Text.Length)
-				{
-					int newLength = Math.Min(chars.Length, totalIndex + run.Text.Length - index);
-					var newRun = new TerminalRun()
+					// Completely replacing an existing run
+					if (index == totalIndex && chars.Length == run.Text.Length)
 					{
-						Text = chars.Substring(0, newLength),
-						Font = font
-					};
+						run.Text = chars;
+						run.Font = font;
 
-					var splitRun = new TerminalRun()
-					{
-						Text = run.Text.Substring(index - totalIndex + newLength),
-						Font = run.Font
-					};
-					run.Text = run.Text.Substring(0, index - totalIndex);
-					if (run.Text.Length == 0)
-					{
-						run.Text = newRun.Text;
-						run.Font = newRun.Font;
-
-						if (splitRun.Text.Length > 0)
-							runs.Insert(i + 1, splitRun);
+						break;
 					}
-					else if (splitRun.Text.Length > 0)
-						runs.InsertRange(i + 1, new[] { newRun, splitRun });
-					else
-						runs.Insert(i + 1, newRun);
-
-					if (newLength != chars.Length)
+					// Inside an existing run
+					else if (index >= totalIndex && index < totalIndex + run.Text.Length)
 					{
-						SetCharacters(index + newLength, chars.Substring(newLength), font);
+						int newLength = Math.Min(chars.Length, totalIndex + run.Text.Length - index);
+						var newRun = new TerminalRun()
+						{
+							Text = chars.Substring(0, newLength),
+							Font = font
+						};
+
+						var splitRun = new TerminalRun()
+						{
+							Text = run.Text.Substring(index - totalIndex + newLength),
+							Font = run.Font
+						};
+						run.Text = run.Text.Substring(0, index - totalIndex);
+						if (run.Text.Length == 0)
+						{
+							run.Text = newRun.Text;
+							run.Font = newRun.Font;
+
+							if (splitRun.Text.Length > 0)
+								runs.Insert(i + 1, splitRun);
+						}
+						else if (splitRun.Text.Length > 0)
+							runs.InsertRange(i + 1, new[] { newRun, splitRun });
+						else
+							runs.Insert(i + 1, newRun);
+
+						if (newLength != chars.Length)
+						{
+							SetCharacters(index + newLength, chars.Substring(newLength), font);
+						}
+
+						break;
 					}
-
-					break;
+					totalIndex += run.Text.Length;
 				}
-				totalIndex += run.Text.Length;
-			}
 
-			Color black = Color.FromRgb(0, 0, 0);
+				Color black = Color.FromRgb(0, 0, 0);
 
-			for (int i = 0; i < runs.Count - 1; ++i)
-			{
-				var run1 = runs[i];
-				var run2 = runs[i + 1];
-
-				bool specialMerge = 
-					run1.Font.Background == run2.Font.Background && 
-					!run1.Font.Inverse && 
-					(run2.Font.Hidden || run2.Text == " ");
-
-				if (run1.Font == run2.Font || specialMerge)
+				for (int i = 0; i < runs.Count - 1; ++i)
 				{
-					if (specialMerge)
-						run1.Text += new string(' ', run2.Text.Length);
-					else
-						run1.Text += run2.Text;
-					runs.RemoveAt(i + 1);
-					i--;
+					var run1 = runs[i];
+					var run2 = runs[i + 1];
+
+					bool specialMerge =
+						run1.Font.Background == run2.Font.Background &&
+						!run1.Font.Inverse &&
+						(run2.Font.Hidden || run2.Text == " ");
+
+					if (run1.Font == run2.Font || specialMerge)
+					{
+						if (specialMerge)
+							run1.Text += new string(' ', run2.Text.Length);
+						else
+							run1.Text += run2.Text;
+						runs.RemoveAt(i + 1);
+						i--;
+					}
 				}
+				savedRuns = null;
 			}
 
 			if (RunsChanged != null)
@@ -287,29 +317,32 @@ namespace npcook.Terminal
 		public string GetCharacters(int index, int length)
 		{
 			var builder = new StringBuilder();
-			int totalIndex = 0;
-			foreach (var run in runs)
+			lock (this)
 			{
-				// Getting the middle of a run
-				if (index >= totalIndex && index + length < totalIndex + run.Text.Length)
+				int totalIndex = 0;
+				foreach (var run in runs)
 				{
-					builder.Append(run.Text, index - totalIndex, length);
-					break;
-				}
-				// Getting the ending of a run
-				if (index >= totalIndex && index < totalIndex + run.Text.Length)
-					builder.Append(run.Text, index - totalIndex, run.Text.Length - (index - totalIndex));
-				// Getting an entire run
-				else if (totalIndex >= index && index + length >= totalIndex + run.Text.Length)
-					builder.Append(run.Text);
-				// Deleting the beginning of a run
-				else if (totalIndex >= index)
-				{
-					builder.Append(run.Text, 0, index + length - totalIndex);
-					break;
-				}
+					// Getting the middle of a run
+					if (index >= totalIndex && index + length < totalIndex + run.Text.Length)
+					{
+						builder.Append(run.Text, index - totalIndex, length);
+						break;
+					}
+					// Getting the ending of a run
+					if (index >= totalIndex && index < totalIndex + run.Text.Length)
+						builder.Append(run.Text, index - totalIndex, run.Text.Length - (index - totalIndex));
+					// Getting an entire run
+					else if (totalIndex >= index && index + length >= totalIndex + run.Text.Length)
+						builder.Append(run.Text);
+					// Deleting the beginning of a run
+					else if (totalIndex >= index)
+					{
+						builder.Append(run.Text, 0, index + length - totalIndex);
+						break;
+					}
 
-				totalIndex += run.Text.Length;
+					totalIndex += run.Text.Length;
+				}
 			}
 
 			return builder.ToString();

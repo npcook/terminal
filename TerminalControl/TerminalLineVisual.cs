@@ -23,6 +23,8 @@ namespace npcook.Terminal.Controls
 			get { return line; }
 			set
 			{
+				Dispatcher.VerifyAccess();
+
 				if (line == value)
 					return;
 				bool wasNull = line == null;
@@ -31,18 +33,13 @@ namespace npcook.Terminal.Controls
 				line = value;
 				if (line != null)
 				{
-					savedRuns = line.Runs.ToArray();
 					line.RunsChanged += Line_RunsChanged;
 
 					Terminal.RemoveDeferChangesCallback(this);
 					redraw();
 				}
-				else
-					savedRuns = new TerminalRun[0];
 			}
 		}
-
-		TerminalRun[] savedRuns = null;
 
 		public int SelectionStart
 		{ get; private set; }
@@ -52,6 +49,8 @@ namespace npcook.Terminal.Controls
 
 		public void Select(int start, int end)
 		{
+			Dispatcher.VerifyAccess();
+
 			if (SelectionStart == start && SelectionEnd == end)
 				return;
 			SelectionStart = start;
@@ -76,7 +75,6 @@ namespace npcook.Terminal.Controls
 					Line.RunsChanged -= Line_RunsChanged;
 				if (VisualParent != null)
 				{
-					savedRuns = Line.Runs.ToArray();
 					Line.RunsChanged += Line_RunsChanged;
 
 					scheduleRedraw();
@@ -86,10 +84,6 @@ namespace npcook.Terminal.Controls
 
 		private void Line_RunsChanged(object sender, EventArgs e)
 		{
-			lock (this)
-			{
-				savedRuns = Line.Runs.ToArray();
-			}
 			scheduleRedraw();
 		}
 
@@ -101,66 +95,65 @@ namespace npcook.Terminal.Controls
 
 		private void redraw()
 		{
+			Dispatcher.VerifyAccess();
+
 			var context = RenderOpen();
 
 			var textDecorations = new TextDecorationCollection();
 
 			var drawPoint = new System.Windows.Point(0, 0);
-			lock (savedRuns)
+			int index = 0;
+			foreach (var run in line.Runs)
 			{
-				int index = 0;
-				foreach (var run in savedRuns)
+				if (run.Font.Hidden && Line.Runs[Line.Runs.Count - 1] == run)
+					break;
+
+				SolidColorBrush foreground;
+				SolidColorBrush background;
+				if (run.Font.Inverse)
 				{
-					if (run.Font.Hidden && Line.Runs[Line.Runs.Count - 1] == run)
-						break;
-
-					SolidColorBrush foreground;
-					SolidColorBrush background;
-					if (run.Font.Inverse)
-					{
-						foreground = Terminal.GetFontBackgroundBrush(run.Font);
-						background = Terminal.GetFontForegroundBrush(run.Font);
-					}
-					else
-					{
-						foreground = Terminal.GetFontForegroundBrush(run.Font);
-						background = Terminal.GetFontBackgroundBrush(run.Font);
-					}
-
-					var ft = new FormattedText(
-						run.Text,
-						System.Globalization.CultureInfo.CurrentUICulture,
-						Terminal.FlowDirection,
-						Terminal.GetFontTypeface(run.Font),
-						Terminal.FontSize,
-						foreground,
-						new NumberSubstitution(),
-						TextFormattingMode.Ideal
-						);
-
-					if (run.Font.Underline)
-						textDecorations.Add(TextDecorations.Underline);
-					if (run.Font.Strike)
-						textDecorations.Add(TextDecorations.Strikethrough);
-
-					if (textDecorations.Count > 0)
-						ft.SetTextDecorations(textDecorations);
-
-					Pen border = null;
-					if (Terminal.DrawRunBoxes)
-						border = new Pen(DebugColors.GetBrush(index), 1);
-
-					var backgroundTopLeft = new System.Windows.Point(Math.Floor(drawPoint.X), Math.Floor(drawPoint.Y));
-					var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
-					context.DrawRectangle(background, border, new Rect(backgroundTopLeft, backgroundSize));
-
-					context.DrawText(ft, drawPoint);
-					drawPoint.X += ft.WidthIncludingTrailingWhitespace;
-
-					textDecorations.Clear();
-
-					index++;
+					foreground = Terminal.GetFontBackgroundBrush(run.Font);
+					background = Terminal.GetFontForegroundBrush(run.Font);
 				}
+				else
+				{
+					foreground = Terminal.GetFontForegroundBrush(run.Font);
+					background = Terminal.GetFontBackgroundBrush(run.Font);
+				}
+
+				var ft = new FormattedText(
+					run.Text,
+					System.Globalization.CultureInfo.CurrentUICulture,
+					Terminal.FlowDirection,
+					Terminal.GetFontTypeface(run.Font),
+					Terminal.FontSize,
+					foreground,
+					new NumberSubstitution(),
+					TextFormattingMode.Ideal
+					);
+
+				if (run.Font.Underline)
+					textDecorations.Add(TextDecorations.Underline);
+				if (run.Font.Strike)
+					textDecorations.Add(TextDecorations.Strikethrough);
+
+				if (textDecorations.Count > 0)
+					ft.SetTextDecorations(textDecorations);
+
+				Pen border = null;
+				if (Terminal.DrawRunBoxes)
+					border = new Pen(DebugColors.GetBrush(index), 1);
+
+				var backgroundTopLeft = new System.Windows.Point(Math.Floor(drawPoint.X), Math.Floor(drawPoint.Y));
+				var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
+				context.DrawRectangle(background, border, new Rect(backgroundTopLeft, backgroundSize));
+
+				context.DrawText(ft, drawPoint);
+				drawPoint.X += ft.WidthIncludingTrailingWhitespace;
+
+				textDecorations.Clear();
+
+				index++;
 			}
 
 			if (SelectionStart != SelectionEnd)
