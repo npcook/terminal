@@ -225,7 +225,7 @@ namespace npcook.Terminal
 			lines[CursorPos.Row].DeleteCharacters(CursorPos.Col, length);
 		}
 
-		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)
+		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true, bool wrapAround = true)
 		{
 			int textIndex = 0;
 			while (textIndex < text.Length)
@@ -243,7 +243,8 @@ namespace npcook.Terminal
 					cursorCol += lineEnd - textIndex;
 				textIndex = lineEnd;
 
-				if (cursorCol == Size.Col && !AutoWrapMode)
+				//bool allowScroll = wrapAround || cursorRow != Size.Row - 1;
+				if (cursorCol == Size.Col && (!AutoWrapMode || (false && !wrapAround && cursorRow == Size.Row - 1)))
 					cursorCol--;
 
 				bool endOfLine = (cursorCol == Size.Col);

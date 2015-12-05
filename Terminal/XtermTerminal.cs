@@ -121,11 +121,18 @@ namespace npcook.Terminal
 
 		private void Notifier_DataAvailable(object sender, EventArgs e)
 		{
-			while (!reader.EndOfStream)
-				readChar();
-			if (state == State.Text)
-				endSequence(SequenceType.Text);
-		}
+			try
+			{
+				while (!reader.EndOfStream)
+					readChar();
+				if (state == State.Text)
+					endSequence(SequenceType.Text);
+			}
+			catch (Exception ex)
+			{
+				System.Diagnostics.Debug.WriteLine(ex);
+			}
+        }
 
 		void endSequence(SequenceType type)
 		{
@@ -289,7 +296,7 @@ namespace npcook.Terminal
 			switch (e.Type)
 			{
 				case SequenceType.Text:
-					Terminal.SetCharacters(e.Sequence, font);
+					Terminal.SetCharacters(e.Sequence, font, true, CurrentScreen == Screen);
 					System.Diagnostics.Debug.WriteLine("got: " + e.Sequence);
 					break;
 
@@ -765,12 +772,15 @@ namespace npcook.Terminal
 		bool handleOsc(string sequence)
 		{
 			bool handled = true;
-			int kind = int.Parse(sequence.Substring(0, sequence.IndexOf(';')));
+			int separatorIndex = sequence.IndexOf(';');
+			if (separatorIndex == -1)
+				separatorIndex = sequence.Length;
+			int kind = int.Parse(sequence.Substring(0, separatorIndex));
 			switch (kind)
 			{
 				case 0:
-					if (TitleChanged != null)
-						TitleChanged(this, new TitleChangeEventArgs(sequence.Substring(sequence.IndexOf(';') + 1)));
+					if (TitleChanged != null && separatorIndex != sequence.Length)
+						TitleChanged(this, new TitleChangeEventArgs(sequence.Substring(separatorIndex + 1)));
 					break;
 
 				default:

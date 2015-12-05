@@ -625,62 +625,69 @@ namespace npcook.Terminal.Controls
 		{
 			Dispatcher.Invoke(() =>
 			{
-				bool atEnd = VerticalOffset + ViewportHeight == ExtentHeight;
-				bool historyShifted = history.Count == historySize;
-				bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
-				int insertBase = screenIndex + e.AddedLinesIndex;
+				try
+				{
+					bool atEnd = VerticalOffset + ViewportHeight == ExtentHeight;
+					bool historyShifted = history.Count == historySize;
+					bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
+					int insertBase = screenIndex + e.AddedLinesIndex;
 
-				if (addToHistory)
-				{
-					prepareHistory(1);
-				}
-				else
-				{
-					int removeBase = screenIndex + e.RemovedLinesIndex;
-					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
-						history.RemoveAt(removeBase + i);
-                }
-
-				for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
-				{
-					var line = terminal.CurrentScreen[e.AddedLinesIndex + i];
 					if (addToHistory)
-						history.PushBack(line);
-					else
-						history.Insert(insertBase + i, line);
-				}
-
-				if (addToHistory)
-				{
-					if (historyShifted)
 					{
-						if (!atEnd)
-							verticalOffset -= 1;
+						prepareHistory(1);
+					}
+					else
+					{
+						int removeBase = screenIndex + e.RemovedLinesIndex;
+						for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+							history.RemoveAt(removeBase + i);
+					}
+
+					for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
+					{
+						var line = terminal.CurrentScreen[e.AddedLinesIndex + i];
+						if (addToHistory)
+							history.PushBack(line);
 						else
-						{
-							shiftVisuals(1, 0, terminal.Size.Row - 1);
-							updateVisuals();
-						}
-					}
-					else
-						scrollOwner.ScrollToBottom();
-				}
-				else
-				{
-					int removeBase = e.RemovedLinesIndex;
-					insertBase = e.AddedLinesIndex;
-					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
-					{
-						var visual = visuals[removeBase + i];
-						if (insertBase > removeBase)
-							insertBase--;
-						visuals.RemoveAt(removeBase + i);
-						visuals.Insert(insertBase + i, recycleVisual(visual));
-						if (removeBase > insertBase)
-							removeBase++;
+							history.Insert(insertBase + i, line);
 					}
 
-					updateVisuals();
+					if (addToHistory)
+					{
+						if (historyShifted)
+						{
+							if (!atEnd)
+								verticalOffset -= 1;
+							else
+							{
+								shiftVisuals(1, 0, terminal.Size.Row - 1);
+								updateVisuals();
+							}
+						}
+						else if (atEnd)
+							scrollOwner.ScrollToBottom();
+					}
+					else
+					{
+						int removeBase = e.RemovedLinesIndex;
+						insertBase = e.AddedLinesIndex;
+						for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+						{
+							var visual = visuals[removeBase + i];
+							if (insertBase > removeBase)
+								insertBase--;
+							visuals.RemoveAt(removeBase + i);
+							visuals.Insert(insertBase + i, recycleVisual(visual));
+							if (removeBase > insertBase)
+								removeBase++;
+						}
+
+						updateVisuals();
+					}
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine(ex);
 				}
 			});
 		}

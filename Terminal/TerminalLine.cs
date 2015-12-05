@@ -9,7 +9,7 @@ namespace npcook.Terminal
 	public class TerminalLine
 	{
 		List<TerminalRun> runs = new List<TerminalRun>();
-		TerminalRun[] savedRuns;
+		TerminalRun[] savedRuns = null;
 		public IReadOnlyList<TerminalRun> Runs
 		{
 			get
@@ -283,7 +283,7 @@ namespace npcook.Terminal
 
 					bool specialMerge =
 						run1.Font.Background == run2.Font.Background &&
-						!run1.Font.Inverse &&
+						run1.Font.Inverse == run2.Font.Inverse &&
 						(run2.Font.Hidden || run2.Text == " ");
 
 					if (run1.Font == run2.Font || specialMerge)
