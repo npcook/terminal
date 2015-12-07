@@ -259,6 +259,17 @@ namespace npcook.Ssh
 				password.Clear();
 				keyPath.Text = settings.KeyFilePath;
 				keyPassphrase.Clear();
+
+				if (serverAddress.Text == "")
+					serverAddress.Focus();
+				else if (serverPort.Text == "")
+					serverPort.Focus();
+				else if (username.Text == "")
+					username.Focus();
+				else if (keyPath.Text == "")
+					password.Focus();
+				else
+					keyPassphrase.Focus();
 			}
 		}
 
