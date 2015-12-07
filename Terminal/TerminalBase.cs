@@ -225,11 +225,22 @@ namespace npcook.Terminal
 			lines[CursorPos.Row].DeleteCharacters(CursorPos.Col, length);
 		}
 
+		bool godDamnSpecialCaseWraparoundBullshit = false;
 		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true, bool wrapAround = true)
 		{
 			int textIndex = 0;
 			while (textIndex < text.Length)
 			{
+				if (godDamnSpecialCaseWraparoundBullshit)
+				{
+					if (cursorRow == Size.Row - 1 && cursorCol == Size.Col - 1 && text[0] != '\r')
+					{
+						cursorCol = 0;
+						advanceCursorRow();
+					}
+					godDamnSpecialCaseWraparoundBullshit = false;
+				}
+
 				int lineEnd = text.IndexOf('\r', textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col + 1));
 				bool carriageFound = false;
 				if (lineEnd == -1)
@@ -244,6 +255,11 @@ namespace npcook.Terminal
 				textIndex = lineEnd;
 
 				//bool allowScroll = wrapAround || cursorRow != Size.Row - 1;
+				if (!wrapAround && cursorCol == Size.Col && cursorRow == Size.Row - 1)
+				{
+					godDamnSpecialCaseWraparoundBullshit = true;
+					cursorCol--;
+				}
 				if (cursorCol == Size.Col && (!AutoWrapMode || (false && !wrapAround && cursorRow == Size.Row - 1)))
 					cursorCol--;
 
