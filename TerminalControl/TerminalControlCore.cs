@@ -423,7 +423,7 @@ namespace npcook.Terminal.Controls
 			var builder = new StringBuilder();
 
 			if (selectionTop.Row == selectionBottom.Row)
-				builder.Append(history[selectionTop.Row].GetCharacters(selectionTop.Col, selectionBottom.Col - selectionBottom.Col));
+				builder.Append(history[selectionTop.Row].GetCharacters(selectionTop.Col, selectionBottom.Col - selectionTop.Col));
 			else
 			{
 				for (int i = selectionTop.Row; i <= selectionBottom.Row; ++i)
