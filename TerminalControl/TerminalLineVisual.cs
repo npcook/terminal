@@ -23,6 +23,8 @@ namespace npcook.Terminal.Controls
 			get { return line; }
 			set
 			{
+				Dispatcher.VerifyAccess();
+
 				if (line == value)
 					return;
 				bool wasNull = line == null;
@@ -31,18 +33,13 @@ namespace npcook.Terminal.Controls
 				line = value;
 				if (line != null)
 				{
-					savedRuns = line.Runs.ToArray();
 					line.RunsChanged += Line_RunsChanged;
 
 					Terminal.RemoveDeferChangesCallback(this);
 					redraw();
 				}
-				else
-					savedRuns = new TerminalRun[0];
 			}
 		}
-
-		TerminalRun[] savedRuns = null;
 
 		public int SelectionStart
 		{ get; private set; }
@@ -52,6 +49,8 @@ namespace npcook.Terminal.Controls
 
 		public void Select(int start, int end)
 		{
+			Dispatcher.VerifyAccess();
+
 			if (SelectionStart == start && SelectionEnd == end)
 				return;
 			SelectionStart = start;
@@ -76,7 +75,6 @@ namespace npcook.Terminal.Controls
 					Line.RunsChanged -= Line_RunsChanged;
 				if (VisualParent != null)
 				{
-					savedRuns = Line.Runs.ToArray();
 					Line.RunsChanged += Line_RunsChanged;
 
 					scheduleRedraw();
@@ -86,10 +84,6 @@ namespace npcook.Terminal.Controls
 
 		private void Line_RunsChanged(object sender, EventArgs e)
 		{
-			lock (this)
-			{
-				savedRuns = Line.Runs.ToArray();
-			}
 			scheduleRedraw();
 		}
 
@@ -101,15 +95,18 @@ namespace npcook.Terminal.Controls
 
 		private void redraw()
 		{
+			Dispatcher.VerifyAccess();
+
 			var context = RenderOpen();
-
-			var textDecorations = new TextDecorationCollection();
-
-			var drawPoint = new System.Windows.Point(0, 0);
-			lock (savedRuns)
+			try
 			{
+				if (line == null)
+					return;
+				var textDecorations = new TextDecorationCollection();
+
+				var drawPoint = new System.Windows.Point(0, 0);
 				int index = 0;
-				foreach (var run in savedRuns)
+				foreach (var run in line.Runs)
 				{
 					if (run.Font.Hidden && Line.Runs[Line.Runs.Count - 1] == run)
 						break;
@@ -161,19 +158,21 @@ namespace npcook.Terminal.Controls
 
 					index++;
 				}
-			}
 
-			if (SelectionStart != SelectionEnd)
+				if (SelectionStart != SelectionEnd)
+				{
+					var selectRect = new Rect(
+						new System.Windows.Point(Math.Floor(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart)), 0.0),
+						new System.Windows.Point(Math.Ceiling(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd)), Math.Ceiling(Terminal.CharHeight)));
+
+					var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(128, 90, 180, 230));
+					context.DrawRectangle(brush, null, selectRect);
+				}
+			}
+			finally
 			{
-				var selectRect = new Rect(
-					new System.Windows.Point(Math.Floor(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart)), 0.0),
-					new System.Windows.Point(Math.Ceiling(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd)), Math.Ceiling(Terminal.CharHeight)));
-
-				var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(128, 90, 180, 230));
-				context.DrawRectangle(brush, null, selectRect);
+				context.Close();
 			}
-
-			context.Close();
 
 			Opacity = 1.0;
 		}
