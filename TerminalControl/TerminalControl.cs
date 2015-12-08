@@ -88,39 +88,20 @@ namespace npcook.Terminal.Controls
 		public double CharHeight
 		{ get { return impl.CharHeight; } }
 
-		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		bool sendKey(Key key, ModifierKeys modifiers)
 		{
-			base.OnGotKeyboardFocus(e);
-			
-			impl.EnableCaret = true;
-			e.Handled = true;
-		}
-
-		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
-		{
-			base.OnLostKeyboardFocus(e);
-			
-			impl.EnableCaret = false;
-			e.Handled = true;
-		}
-
-		protected override void OnPreviewKeyDown(KeyEventArgs e)
-		{
-			if (e.Key == Key.F12 && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
-				impl.DrawRunBoxes = !impl.DrawRunBoxes;
-
 			var encoding = Encoding.ASCII;
 			byte[] bytesToWrite = null;
 
 			// Convert to char array because BinaryWriter sends strings prefixed with their
 			// length
-			if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+			if (modifiers.HasFlag(ModifierKeys.Control))
 			{
-				if (e.Key >= Key.A && e.Key <= Key.Z)
-					bytesToWrite = new byte[] { (byte) (e.Key - Key.A + 1) };
+				if (key >= Key.A && key <= Key.Z)
+					bytesToWrite = new byte[] { (byte) (key - Key.A + 1) };
 				else
 				{
-					switch (e.Key)
+					switch (key)
 					{
 						case Key.OemOpenBrackets:
 							bytesToWrite = new byte[] { 27 }; break;
@@ -130,9 +111,9 @@ namespace npcook.Terminal.Controls
 							bytesToWrite = new byte[] { 29 }; break;
 					}
 
-					if (e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+					if (modifiers.HasFlag(ModifierKeys.Shift))
 					{
-						switch (e.Key)
+						switch (key)
 						{
 							case Key.D6:
 								bytesToWrite = new byte[] { 30 }; break;
@@ -145,7 +126,7 @@ namespace npcook.Terminal.Controls
 			else
 			{
 				string output = null;
-				switch (e.Key)
+				switch (key)
 				{
 					case Key.Tab:
 						output = "\t"; break;
@@ -163,7 +144,7 @@ namespace npcook.Terminal.Controls
 						output = "\x1b[6~"; break;
 					case Key.F1:
 						output = "\x1bOP"; break;
-                    case Key.F2:
+					case Key.F2:
 						output = "\x1bOQ"; break;
 					case Key.F3:
 						output = "\x1bOR"; break;
@@ -194,7 +175,7 @@ namespace npcook.Terminal.Controls
 			if (bytesToWrite == null)
 			{
 				string output = null;
-				switch (e.Key)
+				switch (key)
 				{
 					case Key.Left:
 						output = "\x1b[D"; break;
@@ -217,8 +198,50 @@ namespace npcook.Terminal.Controls
 			if (bytesToWrite != null)
 			{
 				Terminal.SendBytes(bytesToWrite);
+				return true;
+			}
+			return false;
+		}
+
+		protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+		{
+			base.OnPreviewMouseWheel(e);
+
+			if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt) && Terminal.CurrentScreen == Terminal.AltScreen)
+			{
+				int lines = e.Delta / Mouse.MouseWheelDeltaForOneLine;
+				for (int i = 0; i < lines; ++i)
+					sendKey(Key.Up, ModifierKeys.None);
+
+				for (int i = 0; i > lines; --i)
+					sendKey(Key.Down, ModifierKeys.None);
+
 				e.Handled = true;
 			}
+		}
+
+		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnGotKeyboardFocus(e);
+			
+			impl.EnableCaret = true;
+			e.Handled = true;
+		}
+
+		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+		{
+			base.OnLostKeyboardFocus(e);
+			
+			impl.EnableCaret = false;
+			e.Handled = true;
+		}
+
+		protected override void OnPreviewKeyDown(KeyEventArgs e)
+		{
+			if (e.Key == Key.F12 && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+				impl.DrawRunBoxes = !impl.DrawRunBoxes;
+
+			e.Handled = sendKey(e.Key, e.KeyboardDevice.Modifiers);
 
 			scrollViewer.ScrollToBottom();
 		}
