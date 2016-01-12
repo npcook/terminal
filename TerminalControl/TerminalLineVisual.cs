@@ -102,7 +102,10 @@ namespace npcook.Terminal.Controls
 			{
 				if (line == null)
 					return;
-				var textDecorations = new TextDecorationCollection();
+
+				TextDecorationCollection textDecorations = null;
+				// Stores the previously formatted run
+				FormattedText prevFt = null;
 
 				var drawPoint = new System.Windows.Point(0, 0);
 				int index = 0;
@@ -124,6 +127,9 @@ namespace npcook.Terminal.Controls
 						background = Terminal.GetFontBackgroundBrush(run.Font);
 					}
 
+					// Format the text for this run.  However, this is drawn NEXT run.  The
+					// background is drawn one run ahead of the text so the text doesn't get
+					// clipped.
 					var ft = new FormattedText(
 						run.Text,
 						System.Globalization.CultureInfo.CurrentUICulture,
@@ -135,30 +141,46 @@ namespace npcook.Terminal.Controls
 						TextFormattingMode.Ideal
 						);
 
-					if (run.Font.Underline)
-						textDecorations.Add(TextDecorations.Underline);
-					if (run.Font.Strike)
-						textDecorations.Add(TextDecorations.Strikethrough);
+					if (run.Font.Underline || run.Font.Strike)
+					{
+						if (textDecorations == null)
+							textDecorations = new TextDecorationCollection(2);
+						else
+							textDecorations.Clear();
 
-					if (textDecorations.Count > 0)
+						if (run.Font.Underline)
+							textDecorations.Add(TextDecorations.Underline);
+						if (run.Font.Strike)
+							textDecorations.Add(TextDecorations.Strikethrough);
+
 						ft.SetTextDecorations(textDecorations);
+					}
 
+					// Draw the background and border for the current run
 					Pen border = null;
 					if (Terminal.DrawRunBoxes)
 						border = new Pen(DebugColors.GetBrush(index), 1);
 
 					var backgroundTopLeft = new System.Windows.Point(Math.Floor(drawPoint.X), Math.Floor(drawPoint.Y));
-					var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
+					if (prevFt != null)
+						backgroundTopLeft.X += prevFt.WidthIncludingTrailingWhitespace;
+					var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace + 1), Math.Ceiling(ft.Height + 1));
 					context.DrawRectangle(background, border, new Rect(backgroundTopLeft, backgroundSize));
 
-					context.DrawText(ft, drawPoint);
-					drawPoint.X += ft.WidthIncludingTrailingWhitespace;
-
-					textDecorations.Clear();
+					if (prevFt != null)
+					{
+						context.DrawText(prevFt, drawPoint);
+						drawPoint.X += prevFt.WidthIncludingTrailingWhitespace;
+					}
+					prevFt = ft;
 
 					index++;
 				}
 
+				if (prevFt != null)
+					context.DrawText(prevFt, drawPoint);
+
+				// TODO: This selection drawing logic doesn't account for multi-width characters.
 				if (SelectionStart != SelectionEnd)
 				{
 					var selectRect = new Rect(
@@ -173,8 +195,6 @@ namespace npcook.Terminal.Controls
 			{
 				context.Close();
 			}
-
-			Opacity = 1.0;
 		}
 	}
 }
