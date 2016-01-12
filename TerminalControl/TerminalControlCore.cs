@@ -543,7 +543,7 @@ namespace npcook.Terminal.Controls
 			if (selectionState == SelectionState.Selecting)
 			{
 				var position = e.GetPosition(this);
-				int visualIndex = (int) (position.Y / CharHeight);
+				int visualIndex = Math.Min(Math.Max(0, (int) (position.Y / CharHeight)), visuals.Count - 1);
 				selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (visualIndex + VerticalOffset));
 
 				updateSelectedVisuals();

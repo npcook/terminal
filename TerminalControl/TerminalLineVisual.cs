@@ -183,6 +183,9 @@ namespace npcook.Terminal.Controls
 				// TODO: This selection drawing logic doesn't account for multi-width characters.
 				if (SelectionStart != SelectionEnd)
 				{
+					if (prevFt != null)
+						drawPoint.X += prevFt.WidthIncludingTrailingWhitespace;
+
 					var selectRect = new Rect(
 						new System.Windows.Point(Math.Floor(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart)), 0.0),
 						new System.Windows.Point(Math.Ceiling(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd)), Math.Ceiling(Terminal.CharHeight)));
