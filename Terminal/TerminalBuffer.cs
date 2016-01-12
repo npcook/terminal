@@ -22,7 +22,9 @@ namespace npcook.Terminal
 				}
 				else if (value < oldRowCount)
 				{
-					Array.Resize(ref lines, value);
+					var newLines = new TerminalLine[value];
+					Array.Copy(lines, oldRowCount - value, newLines, 0, value);
+					lines = newLines;
 				}
 			}
 		}

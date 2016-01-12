@@ -189,54 +189,57 @@ namespace npcook.Ssh
 			resizeTerminal(App.DefaultTerminalCols, App.DefaultTerminalRows);
 		}
 
+		bool aaaa = false;
 		private void resizeTerminal(int cols, int rows)
 		{
 			terminalControl.Width = cols * terminalControl.CharWidth + SystemParameters.ScrollWidth;
 			terminalControl.Height = rows * terminalControl.CharHeight;
+			aaaa = true;
 		}
 
 		private void Terminal_SizeChanged(object sender, EventArgs e)
 		{
-			resizeTerminal(terminalControl.Terminal.Size.Col, terminalControl.Terminal.Size.Row);
+			//resizeTerminal(terminalControl.Terminal.Size.Col, terminalControl.Terminal.Size.Row);
 		}
 
 		private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
 		{
+			const int WM_SIZE = 0x5;
 			const int WM_SIZING = 0x0214;
-
-			if (msg == WM_SIZING)
+			
+			if (msg == WM_SIZE || msg == WM_SIZING)
 			{
+				terminalControl.Width = double.NaN;
+				terminalControl.Height = double.NaN;
+
 				var transformer = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;
                 var stops = transformer.Transform(new System.Windows.Point(terminalControl.CharWidth, terminalControl.CharHeight));
 				double horizontalStop = stops.X;
 				double verticalStop = stops.Y;
 
-				var terminalOffset = terminalControl.TransformToAncestor(PresentationSource.FromVisual(this).RootVisual).Transform(new System.Windows.Point(0, 0));
+				var terminalOffset = terminalControl.TransformToAncestor(root).Transform(new System.Windows.Point(0, 0));
 
-				var rect = (NativeMethods.RECT) Marshal.PtrToStructure(lParam, typeof(NativeMethods.RECT));
+				NativeMethods.RECT windowRect;
+				NativeMethods.GetWindowRect(hwnd, out windowRect);
 
 				NativeMethods.RECT clientRect;
 				NativeMethods.GetClientRect(hwnd, out clientRect);
-				terminalOffset.X += 2 * SystemParameters.BorderWidth + SystemParameters.ScrollWidth;
-				terminalOffset.Y += SystemParameters.CaptionHeight + SystemParameters.BorderWidth;//rect.bottom - rect.top - (clientRect.bottom - clientRect.top);
 
-				int newCols = (int) Math.Floor((rect.right - rect.left - terminalOffset.X + 1) / horizontalStop);
-				int newRows = (int) Math.Floor((rect.bottom - rect.top - terminalOffset.Y + 1) / verticalStop);
-
-				rect.right = rect.left + (int) (newCols * horizontalStop + terminalOffset.X);
-				rect.bottom = rect.top + (int) (newRows * verticalStop + terminalOffset.Y);
-
-				Marshal.StructureToPtr(rect, lParam, false);
-
-				handled = true;
+				int newCols = (int) ((clientRect.right - terminalOffset.X - SystemParameters.ScrollWidth) / horizontalStop);
+				int newRows = (int) ((clientRect.bottom - terminalOffset.Y) / verticalStop);
 
 				if (newCols != terminalControl.Terminal.Size.Col || newRows != terminalControl.Terminal.Size.Row)
 				{
-					stream.Channel.SendWindowChangeRequest((uint) newCols, (uint) newRows, 0, 0);
+					fuck.Text = $"{newCols}, {newRows}";
 					terminalControl.Terminal.Size = new Terminal.Point(newCols, newRows);
+					stream.Channel.SendWindowChangeRequest((uint) newCols, (uint) newRows, 0, 0);
 				}
 
-				return (IntPtr) 1;
+				if (msg == WM_SIZING)
+				{
+					handled = true;
+					return (IntPtr) 1;
+				}
 			}
 
 			return IntPtr.Zero;

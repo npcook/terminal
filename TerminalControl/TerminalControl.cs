@@ -39,6 +39,15 @@ namespace npcook.Terminal.Controls
 			var sizeBinding = new Binding("FontSize");
 			sizeBinding.Source = this;
 			impl.SetBinding(TerminalControlCore.FontSizeProperty, sizeBinding);
+
+			impl.SizeChanged += (sender, e) =>
+			{
+				//if (e.PreviousSize.Width > 1 && e.PreviousSize.Height > 1)
+				//{
+				//	Width = ActualWidth + e.NewSize.Width - e.PreviousSize.Width;
+				//	Height = ActualHeight + e.NewSize.Height - e.PreviousSize.Height;
+				//}
+			};
 		}
 
 		public override void OnApplyTemplate()

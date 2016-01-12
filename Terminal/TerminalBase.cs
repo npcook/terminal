@@ -106,6 +106,7 @@ namespace npcook.Terminal
 				screenBuffer.RowCount = value.Row;
 				altScreenBuffer.RowCount = value.Row;
 				size = value;
+				CursorPos = CursorPos;
 
 				if (SizeChanged != null)
 					SizeChanged(this, EventArgs.Empty);
@@ -233,7 +234,7 @@ namespace npcook.Terminal
 			{
 				if (godDamnSpecialCaseWraparoundBullshit)
 				{
-					if (cursorRow == Size.Row - 1 && cursorCol == Size.Col - 1 && text[0] != '\r')
+					if (cursorCol == Size.Col - 1 && text[0] != '\r')
 					{
 						cursorCol = 0;
 						advanceCursorRow();
@@ -255,7 +256,7 @@ namespace npcook.Terminal
 				textIndex = lineEnd;
 
 				//bool allowScroll = wrapAround || cursorRow != Size.Row - 1;
-				if (!wrapAround && cursorCol == Size.Col && cursorRow == Size.Row - 1)
+				if (!wrapAround && cursorCol == Size.Col)
 				{
 					godDamnSpecialCaseWraparoundBullshit = true;
 					cursorCol--;

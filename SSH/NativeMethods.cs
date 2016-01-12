@@ -20,5 +20,8 @@ namespace npcook.Ssh
 
 		[DllImport("user32.dll")]
 		public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
+
+		[DllImport("user32.dll")]
+		public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 	}
 }

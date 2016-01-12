@@ -747,7 +747,8 @@ namespace npcook.Terminal.Controls
 			int rowDiff = terminal.Size.Row - visuals.Count;
 			for (int i = 0; i < rowDiff; ++i)
 			{
-				var newVisual = new TerminalLineVisual(this, terminal.CurrentScreen[terminal.Size.Row - 1]);
+				history.PushBack(terminal.CurrentScreen[terminal.Size.Row - rowDiff + i]);
+				var newVisual = new TerminalLineVisual(this, history[history.Count - 1]);
 				visuals.PushBack(newVisual);
 				AddVisualChild(newVisual);
 
@@ -757,17 +758,20 @@ namespace npcook.Terminal.Controls
 			
 			for (int i = 0; i > rowDiff; --i)
 			{
+				verticalOffset++;
 				var oldVisual = visuals.PopFront();
 				RemoveVisualChild(oldVisual);
 				oldVisual.Line = null;
 
+				while (history[history.Count - 1].Length == 0 && history.Count > terminal.Size.Row)
+					history.PopBack();
+
 				extraVisuals.PopFront();
 			}
-
-			SetVerticalOffset(verticalOffset - Math.Abs(rowDiff));
-
+			
 			InvalidateMeasure();
-			ScrollOwner.InvalidateScrollInfo();
+			SetVerticalOffset(verticalOffset);
+			updateVisuals();
 		}
 
 		private void Terminal_ScreenChanged(object sender, EventArgs e)
@@ -800,6 +804,8 @@ namespace npcook.Terminal.Controls
 
 		protected override Size MeasureOverride(Size availableSize)
 		{
+			availableSize.Width = double.PositiveInfinity;
+			availableSize.Height = double.PositiveInfinity;
 			if (terminal != null)
 			{
 				// The size is based on the number of rows and columns in the terminal
