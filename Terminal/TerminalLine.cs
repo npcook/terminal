@@ -44,24 +44,31 @@ namespace npcook.Terminal
 			{
 				if (value > colCount)
 				{
+					extend(value);
 				}
 				else if (value < colCount)
 				{
-					int totalIndex = 0;
-					for (int i = 0; i < runs.Count; ++i)
-					{
-						var run = runs[i];
-						if (totalIndex >= value)
-						{
-							runs.RemoveRange(i + 1, runs.Count - i - 1);
-							break;
-						}
-						totalIndex += run.Text.Length;
-					}
+					DeleteCharacters(value, colCount - value);
 				}
 				
 				colCount = value;
 			}
+		}
+
+		public bool IsEmpty()
+		{
+			if (runs.Count == 0)
+				return true;
+			foreach (var run in runs)
+			{
+				if (!run.Font.Hidden)
+					return false;
+				if (run.Font.Background != Color.FromRgb(0, 0, 0))
+					return false;
+				if (!run.Text.All(c => char.IsWhiteSpace(c)))
+					return false;
+			}
+			return true;
 		}
 
 		void extend(int toLength)

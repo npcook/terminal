@@ -27,7 +27,8 @@ namespace npcook.Ssh
 
 		private void Dispatcher_UnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
 		{
-			MessageBox.Show(MainWindow, e.Exception.Message, "An unhandled exception has occurred", MessageBoxButton.OK, MessageBoxImage.Error);
+			string message = $"{e.Exception.Message}\n\n{e.Exception.StackTrace}";
+			MessageBox.Show(MainWindow, message, "An unhandled exception has occurred", MessageBoxButton.OK, MessageBoxImage.Error);
 			Shutdown(1);
 		}
 

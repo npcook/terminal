@@ -6,7 +6,9 @@
         xmlns:local="clr-namespace:npcook.Ssh"
         xmlns:term="clr-namespace:npcook.Terminal.Controls;assembly=npcook.Terminal.Controls"
         mc:Ignorable="d"
-        Title="MainWindow" SizeToContent="WidthAndHeight" FocusManager.FocusedElement="{Binding ElementName=terminalControl}" GotKeyboardFocus="OnKeyboardFocus">
+        Title="MainWindow" 
+        FocusManager.FocusedElement="{Binding ElementName=terminalControl}" 
+        GotKeyboardFocus="OnKeyboardFocus" Height="309" Width="532">
     <Grid x:Name="root">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -22,6 +24,5 @@
                               FontSize="13" Background="Black" Grid.Row="1" Width="Auto" Height="Auto" 
                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" SnapsToDevicePixels="True">
         </term:TerminalControl>
-        <TextBlock x:Name="fuck" Background="White" Grid.Row="0" HorizontalAlignment="Right"/>
     </Grid>
 </Window>

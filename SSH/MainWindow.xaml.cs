@@ -120,8 +120,6 @@ namespace npcook.Ssh
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		private HwndSource hwndSource;
-
 #if USE_LIBSSHNET
 		LibSshNetStream stream;
 #else
@@ -172,77 +170,80 @@ namespace npcook.Ssh
 			MessageBox.Show(this, message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
 		}
 
+		bool initialSized = false;
 		public MainWindow()
 		{
 			InitializeComponent();
 
 			IsVisibleChanged += this_IsVisibleChanged;
+			SizeChanged += this_SizeChanged;
+
+			Loaded += this_Loaded;
 		}
 
 		private void this_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
 		{
 			IsVisibleChanged -= this_IsVisibleChanged;
 
-			hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-			hwndSource.AddHook(HwndHook);
-
 			resizeTerminal(App.DefaultTerminalCols, App.DefaultTerminalRows);
 		}
 
-		bool aaaa = false;
+		private void this_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
+		{
+			if (!initialSized)
+			{
+				initialSized = true;
+				return;
+			}
+
+			terminalControl.Width = double.NaN;
+			terminalControl.Height = double.NaN;
+
+			IntPtr hwnd = new WindowInteropHelper(this).Handle;
+
+			var transformer = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;
+			var stops = transformer.Transform(new System.Windows.Point(terminalControl.CharWidth, terminalControl.CharHeight));
+			double horizontalStop = stops.X;
+			double verticalStop = stops.Y;
+
+			var terminalOffset = terminalControl.TransformToAncestor(root).Transform(new System.Windows.Point(0, 0));
+
+			NativeMethods.RECT windowRect;
+			NativeMethods.GetWindowRect(hwnd, out windowRect);
+
+			NativeMethods.RECT clientRect;
+			NativeMethods.GetClientRect(hwnd, out clientRect);
+
+			int newCols = (int) ((clientRect.right - terminalOffset.X - SystemParameters.ScrollWidth + 1f) / horizontalStop);
+			int newRows = (int) ((clientRect.bottom - terminalOffset.Y + 1f) / verticalStop);
+
+			if (newCols != terminalControl.Terminal.Size.Col || newRows != terminalControl.Terminal.Size.Row)
+			{
+				terminalControl.Terminal.Size = new Terminal.Point(newCols, newRows);
+				stream.Channel.SendWindowChangeRequest((uint) newCols, (uint) newRows, 0, 0);
+			}
+		}
+
+		private void this_Loaded(object sender, RoutedEventArgs e)
+		{
+			var content = root;
+			
+			InvalidateMeasure();
+			var contentDesired = terminalControl.TerminalSize;
+
+			Width = contentDesired.Width + ActualWidth - content.ActualWidth;
+			Height = contentDesired.Height + ActualHeight - content.ActualHeight;
+		}
+
 		private void resizeTerminal(int cols, int rows)
 		{
 			terminalControl.Width = cols * terminalControl.CharWidth + SystemParameters.ScrollWidth;
 			terminalControl.Height = rows * terminalControl.CharHeight;
-			aaaa = true;
 		}
 
 		private void Terminal_SizeChanged(object sender, EventArgs e)
 		{
 			//resizeTerminal(terminalControl.Terminal.Size.Col, terminalControl.Terminal.Size.Row);
-		}
-
-		private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
-		{
-			const int WM_SIZE = 0x5;
-			const int WM_SIZING = 0x0214;
-			
-			if (msg == WM_SIZE || msg == WM_SIZING)
-			{
-				terminalControl.Width = double.NaN;
-				terminalControl.Height = double.NaN;
-
-				var transformer = PresentationSource.FromVisual(this).CompositionTarget.TransformToDevice;
-                var stops = transformer.Transform(new System.Windows.Point(terminalControl.CharWidth, terminalControl.CharHeight));
-				double horizontalStop = stops.X;
-				double verticalStop = stops.Y;
-
-				var terminalOffset = terminalControl.TransformToAncestor(root).Transform(new System.Windows.Point(0, 0));
-
-				NativeMethods.RECT windowRect;
-				NativeMethods.GetWindowRect(hwnd, out windowRect);
-
-				NativeMethods.RECT clientRect;
-				NativeMethods.GetClientRect(hwnd, out clientRect);
-
-				int newCols = (int) ((clientRect.right - terminalOffset.X - SystemParameters.ScrollWidth) / horizontalStop);
-				int newRows = (int) ((clientRect.bottom - terminalOffset.Y) / verticalStop);
-
-				if (newCols != terminalControl.Terminal.Size.Col || newRows != terminalControl.Terminal.Size.Row)
-				{
-					fuck.Text = $"{newCols}, {newRows}";
-					terminalControl.Terminal.Size = new Terminal.Point(newCols, newRows);
-					stream.Channel.SendWindowChangeRequest((uint) newCols, (uint) newRows, 0, 0);
-				}
-
-				if (msg == WM_SIZING)
-				{
-					handled = true;
-					return (IntPtr) 1;
-				}
-			}
-
-			return IntPtr.Zero;
 		}
 
 		void OnKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)

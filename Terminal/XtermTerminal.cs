@@ -130,6 +130,9 @@ namespace npcook.Terminal
 			}
 			catch (Exception ex)
 			{
+				if (System.Diagnostics.Debugger.IsAttached) {
+					System.Diagnostics.Debugger.Break();
+				}
 				System.Diagnostics.Debug.WriteLine(ex);
 			}
         }

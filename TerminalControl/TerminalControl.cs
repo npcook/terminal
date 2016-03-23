@@ -39,15 +39,6 @@ namespace npcook.Terminal.Controls
 			var sizeBinding = new Binding("FontSize");
 			sizeBinding.Source = this;
 			impl.SetBinding(TerminalControlCore.FontSizeProperty, sizeBinding);
-
-			impl.SizeChanged += (sender, e) =>
-			{
-				//if (e.PreviousSize.Width > 1 && e.PreviousSize.Height > 1)
-				//{
-				//	Width = ActualWidth + e.NewSize.Width - e.PreviousSize.Width;
-				//	Height = ActualHeight + e.NewSize.Height - e.PreviousSize.Height;
-				//}
-			};
 		}
 
 		public override void OnApplyTemplate()
@@ -96,6 +87,9 @@ namespace npcook.Terminal.Controls
 
 		public double CharHeight
 		{ get { return impl.CharHeight; } }
+
+		public Size TerminalSize
+		{ get; private set; }
 
 		bool sendKey(Key key, ModifierKeys modifiers)
 		{
@@ -287,6 +281,13 @@ namespace npcook.Terminal.Controls
 		public void AddMessage(string text, TerminalFont font)
 		{
 			impl.AddMessage(text, font);
+		}
+
+		protected override Size MeasureOverride(Size availableSize)
+		{
+			scrollViewer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+			TerminalSize = scrollViewer.DesiredSize;
+			return scrollViewer.DesiredSize;
 		}
 	}
 }
