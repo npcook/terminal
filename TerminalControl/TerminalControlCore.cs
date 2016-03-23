@@ -766,7 +766,7 @@ namespace npcook.Terminal.Controls
 			for (int i = 0; i > rowDiff; --i)
 			{
 				TerminalLineVisual oldVisual;
-				if (visuals.Count > e.OldCursorPos.Row)
+				if (visuals.Count - 1 > e.OldCursorPos.Row)
 					oldVisual = visuals.PopBack();
 				else
 				{
