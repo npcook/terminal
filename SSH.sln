@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ssh", "SSH\Ssh.csproj", "{CC7A5CAF-0A37-4205-8945-23A453CBE7C7}"
 EndProject
@@ -16,6 +16,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Renci.SshNet", "Ssh.Net\Renci.SshNet\Renci.SshNet.csproj", "{2F5F8C90-0BD1-424F-997C-7BC6280919D1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalControlTests", "TerminalControlTests\TerminalControlTests.csproj", "{224BDE3E-614A-4DA4-8DAC-3460F6BA781E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sftp", "Sftp\Sftp.csproj", "{7A5BE524-2F84-4D47-9542-C987E59D6F0B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -105,6 +107,18 @@ Global
 		{224BDE3E-614A-4DA4-8DAC-3460F6BA781E}.Release|x64.Build.0 = Release|Any CPU
 		{224BDE3E-614A-4DA4-8DAC-3460F6BA781E}.Release|x86.ActiveCfg = Release|Any CPU
 		{224BDE3E-614A-4DA4-8DAC-3460F6BA781E}.Release|x86.Build.0 = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|x64.Build.0 = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Debug|x86.Build.0 = Debug|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|x64.ActiveCfg = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|x64.Build.0 = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|x86.ActiveCfg = Release|Any CPU
+		{7A5BE524-2F84-4D47-9542-C987E59D6F0B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
