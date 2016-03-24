@@ -10,7 +10,9 @@
                 <ControlTemplate TargetType="{x:Type local:TerminalControl}">
                     <Border Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}">
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
                         <ScrollViewer Name="PART_ScrollViewer" />
                     </Border>
                 </ControlTemplate>

@@ -191,3 +191,5 @@ ModelManifest.xml
 
 # libsshnet lib files
 libsshnet/lib
+
+*.opendb

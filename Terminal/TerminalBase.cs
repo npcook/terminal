@@ -1,20 +1,7 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace npcook.Terminal
 {
@@ -59,6 +46,17 @@ namespace npcook.Terminal
 		}
 	}
 
+	public class SizeChangedEventArgs : EventArgs
+	{
+		public Point OldCursorPos
+		{ get; }
+
+		public SizeChangedEventArgs(Point oldCursorPos)
+		{
+			OldCursorPos = oldCursorPos;
+		}
+	}
+
 	public struct Point
 	{
 		public int Col;
@@ -73,6 +71,33 @@ namespace npcook.Terminal
 		public override string ToString()
 		{
 			return string.Format("Point({0}, {1})", Col, Row);
+		}
+
+		public static bool operator ==(Point _1, Point _2)
+		{
+			return _1.Col == _2.Col && _1.Row == _2.Row;
+		}
+
+		public static bool operator !=(Point _1, Point _2)
+		{
+			return _1.Col != _2.Col || _1.Row != _2.Row;
+		}
+
+		public override bool Equals(object obj)
+		{
+			if (obj is Point)
+				return Equals((Point) obj);
+			return base.Equals(obj);
+		}
+
+		public bool Equals(Point other)
+		{
+			return this == other;
+		}
+
+		public override int GetHashCode()
+		{
+			return Col ^ Row;
 		}
 	}
 
@@ -90,38 +115,62 @@ namespace npcook.Terminal
 	public class TerminalBase : IDisposable
 	{
 		public event EventHandler<StreamExceptionEventArgs> StreamException;
-
-		int cursorCol;
-		int cursorRow;
+		
 		public Point CursorPos
 		{
-			get { return new Point(cursorCol, cursorRow); }
+			get
+			{
+				lock (this)
+					return new Point(currentBuffer.CursorCol, currentBuffer.CursorRow);
+			}
 			internal set
 			{
-//				if (value.Col < 0 || value.Row < 0 || value.Col >= Size.Col || value.Row >= Size.Row)
-//					throw new ArgumentOutOfRangeException("value", value, "CursorPos set outside of the terminal size");
-				cursorCol = Math.Min(Math.Max(value.Col, 0), Size.Col - 1);
-				cursorRow = Math.Min(Math.Max(value.Row, 0), Size.Row - 1);
+				lock (this)
+				{
+					currentBuffer.CursorCol = value.Col;
+					currentBuffer.CursorRow = value.Row;
+				}
 
-//				System.Diagnostics.Debug.WriteLine(string.Format("Moving cursor to {0}", value));
-
-				if (CursorPosChanged != null)
-					CursorPosChanged(this, EventArgs.Empty);
+				notifyCursorPosChanged();
 			}
+		}
+
+		private int cursorCol
+		{
+			get { return currentBuffer.CursorCol; }
+			set { currentBuffer.CursorCol = value; }
+		}
+
+		private int cursorRow
+		{
+			get { return currentBuffer.CursorRow; }
+			set { currentBuffer.CursorRow = value; }
 		}
 
 		Point size = new Point(0, 0);
 		public Point Size
 		{
-			get { return size; }
+			get
+			{
+				lock (this)
+				{
+					System.Diagnostics.Debug.Assert(currentBuffer.Size == altScreenBuffer.Size && currentBuffer.Size == size);
+					return size;
+				}
+			}
 			set
 			{
-				screenBuffer.RowCount = value.Row;
-				altScreenBuffer.RowCount = value.Row;
-				size = value;
+				var oldCursorPos = CursorPos;
+				lock (this)
+				{
+					screenBuffer.Resize(value.Col, value.Row);
+					altScreenBuffer.Resize(value.Col, value.Row);
+					size = value;
+					CursorPos = CursorPos;
+				}
 
 				if (SizeChanged != null)
-					SizeChanged(this, EventArgs.Empty);
+					SizeChanged(this, new SizeChangedEventArgs(oldCursorPos));
 			}
 		}
 
@@ -156,7 +205,7 @@ namespace npcook.Terminal
 		{ get { return currentBuffer.Lines; } }
 
 		public event EventHandler<EventArgs> CursorPosChanged;
-		public event EventHandler<EventArgs> SizeChanged;
+		public event EventHandler<SizeChangedEventArgs> SizeChanged;
 		public event EventHandler<LinesMovedEventArgs> LinesMoved;
 		public event EventHandler<EventArgs> ScreenChanged;
 
@@ -173,7 +222,13 @@ namespace npcook.Terminal
 		public void ChangeToScreen(bool alternate)
 		{
 			if (alternate)
+			{
 				currentBuffer = altScreenBuffer;
+				foreach (var line in currentBuffer.Lines)
+				{
+					line.DeleteCharacters(0, line.Length);
+				}
+			}
 			else
 				currentBuffer = screenBuffer;
 
@@ -184,8 +239,6 @@ namespace npcook.Terminal
 		void advanceCursorRow()
 		{
 			cursorRow++;
-			if (cursorCol == Size.Col)
-				cursorCol = 0;
 
 			if (cursorRow == Size.Row)
 			{
@@ -232,44 +285,66 @@ namespace npcook.Terminal
 			lines[CursorPos.Row].DeleteCharacters(CursorPos.Col, length);
 		}
 
-		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true)
+		bool godDamnSpecialCaseWraparoundBullshit = false;
+		public void SetCharacters(string text, TerminalFont font, bool advanceCursor = true, bool wrapAround = true)
 		{
 			int textIndex = 0;
+			int col = cursorCol;
 			while (textIndex < text.Length)
 			{
-				int lineEnd = text.IndexOf('\r', textIndex, Math.Min(text.Length - textIndex, Size.Col - CursorPos.Col + 1));
+				if (godDamnSpecialCaseWraparoundBullshit)
+				{
+					if (col == Size.Col - 1 && text[0] != '\r')
+					{
+						col = 0;
+						advanceCursorRow();
+					}
+					godDamnSpecialCaseWraparoundBullshit = false;
+				}
+
+				int lineEnd = text.IndexOf('\r', textIndex, Math.Min(text.Length - textIndex, Size.Col - col + 1));
 				bool carriageFound = false;
 				if (lineEnd == -1)
 					lineEnd = text.Length;
 				else
 					carriageFound = true;
-				lineEnd = textIndex + Math.Min(lineEnd - textIndex, Size.Col - CursorPos.Col);
+				lineEnd = textIndex + Math.Min(lineEnd - textIndex, Size.Col - col);
 
-				lines[CursorPos.Row].SetCharacters(CursorPos.Col, text.Substring(textIndex, lineEnd - textIndex), font);
+				lines[CursorPos.Row].SetCharacters(col, text.Substring(textIndex, lineEnd - textIndex), font);
 				if (advanceCursor && !font.Hidden)
-					cursorCol += lineEnd - textIndex;
+					col += lineEnd - textIndex;
 				textIndex = lineEnd;
 
-				if (cursorCol == Size.Col && !AutoWrapMode)
-					cursorCol--;
+				//bool allowScroll = wrapAround || cursorRow != Size.Row - 1;
+				if (!wrapAround && col == Size.Col)
+				{
+					godDamnSpecialCaseWraparoundBullshit = true;
+					col--;
+				}
+				if (col == Size.Col && (!AutoWrapMode || (false && !wrapAround && cursorRow == Size.Row - 1)))
+					col--;
 
-				bool endOfLine = (cursorCol == Size.Col);
+				bool endOfLine = (col == Size.Col);
 				bool nextRow = endOfLine;
 				if (carriageFound)
 				{
 					if (text[textIndex] != '\r')
 						textIndex++;
 					textIndex++;
-					cursorCol = 0;
+					col = 0;
 					nextRow = false;
 				}
 
-				if (nextRow && advanceCursor)
+				if (nextRow && advanceCursor) {
+					col = 0;
 					advanceCursorRow();
+				}
 			}
 
-			if (CursorPosChanged != null && advanceCursor)
-				CursorPosChanged(this, EventArgs.Empty);
+			cursorCol = col;
+
+			if (advanceCursor)
+				notifyCursorPosChanged();
 		}
 
 		public bool SendByte(byte data)
@@ -329,6 +404,12 @@ namespace npcook.Terminal
 					throw;
 			}
 			return false;
+		}
+
+		void notifyCursorPosChanged()
+		{
+			if (CursorPosChanged != null)
+				CursorPosChanged(this, EventArgs.Empty);
 		}
 
 		#region IDisposable Support

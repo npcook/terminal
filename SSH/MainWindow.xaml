@@ -6,12 +6,23 @@
         xmlns:local="clr-namespace:npcook.Ssh"
         xmlns:term="clr-namespace:npcook.Terminal.Controls;assembly=npcook.Terminal.Controls"
         mc:Ignorable="d"
-        Title="MainWindow" SizeToContent="WidthAndHeight" FocusManager.FocusedElement="{Binding ElementName=terminalControl}" GotKeyboardFocus="OnKeyboardFocus">
-    <StackPanel Orientation="Vertical">
-        <ToolBar x:Name="toolBar">
+        Title="MainWindow" 
+        FocusManager.FocusedElement="{Binding ElementName=terminalControl}" 
+        GotKeyboardFocus="OnKeyboardFocus" Height="309" Width="532">
+    <Grid x:Name="root">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <ToolBar x:Name="toolBar" Grid.Row="0">
             <Button Content="Connect" Height="22" VerticalAlignment="Top" Width="75" Click="connect_click"/>
         </ToolBar>
-        <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FontSize="13" Background="Black" Width="400" Height="200">
+        <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FocusVisualStyle="{x:Null}" 
+                              FontSize="13" Background="Black" Grid.Row="1" Width="Auto" Height="Auto" 
+                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch" SnapsToDevicePixels="True">
         </term:TerminalControl>
-    </StackPanel>
+    </Grid>
 </Window>

@@ -121,11 +121,21 @@ namespace npcook.Terminal
 
 		private void Notifier_DataAvailable(object sender, EventArgs e)
 		{
-			while (!reader.EndOfStream)
-				readChar();
-			if (state == State.Text)
-				endSequence(SequenceType.Text);
-		}
+			try
+			{
+				while (!reader.EndOfStream)
+					readChar();
+				if (state == State.Text)
+					endSequence(SequenceType.Text);
+			}
+			catch (Exception ex)
+			{
+				if (System.Diagnostics.Debugger.IsAttached) {
+					System.Diagnostics.Debugger.Break();
+				}
+				System.Diagnostics.Debug.WriteLine(ex);
+			}
+        }
 
 		void endSequence(SequenceType type)
 		{
@@ -289,7 +299,7 @@ namespace npcook.Terminal
 			switch (e.Type)
 			{
 				case SequenceType.Text:
-					Terminal.SetCharacters(e.Sequence, font);
+					Terminal.SetCharacters(e.Sequence, font, true, CurrentScreen == Screen);
 					System.Diagnostics.Debug.WriteLine("got: " + e.Sequence);
 					break;
 
@@ -447,6 +457,7 @@ namespace npcook.Terminal
 
 				case XtermDecMode.UseAltScreenAndSaveCursor:
 					mainScreenSavedCursorPos = CursorPos;
+					CursorPos = new Point(0, 0);
 					ChangeToScreen(true);
 					break;
 
@@ -503,13 +514,6 @@ namespace npcook.Terminal
 
 		int scrollRegionTop = 0;
 		int scrollRegionBottom = int.MaxValue;
-
-		struct CsiHandler
-		{
-			public char Symbol;
-			public string Name;
-			public string Description;
-		}
 
 		bool handleCsi(string sequence)
 		{
@@ -771,12 +775,15 @@ namespace npcook.Terminal
 		bool handleOsc(string sequence)
 		{
 			bool handled = true;
-			int kind = int.Parse(sequence.Substring(0, sequence.IndexOf(';')));
+			int separatorIndex = sequence.IndexOf(';');
+			if (separatorIndex == -1)
+				separatorIndex = sequence.Length;
+			int kind = int.Parse(sequence.Substring(0, separatorIndex));
 			switch (kind)
 			{
 				case 0:
-					if (TitleChanged != null)
-						TitleChanged(this, new TitleChangeEventArgs(sequence.Substring(sequence.IndexOf(';') + 1)));
+					if (TitleChanged != null && separatorIndex != sequence.Length)
+						TitleChanged(this, new TitleChangeEventArgs(sequence.Substring(separatorIndex + 1)));
 					break;
 
 				default:
@@ -787,16 +794,16 @@ namespace npcook.Terminal
 			return handled;
 		}
 
-		bool applicationKeypad = false;
+		//bool applicationKeypad = false;
 		bool handleSingleEscape(char kind)
 		{
 			bool handled = true;
 			string sequence = new string(kind, 1);
-			if (kind == '=')
-				applicationKeypad = true;
-			else if (kind == '>')
-				applicationKeypad = false;
-			else if (kind == '7')
+			//if (kind == '=')
+			//	applicationKeypad = true;
+			//else if (kind == '>')
+			//	applicationKeypad = false;
+			if (kind == '7')
 				savedCursorPos = CursorPos;
 			else if (kind == '8')
 				CursorPos = savedCursorPos;

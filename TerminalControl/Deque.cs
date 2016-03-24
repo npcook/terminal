@@ -49,7 +49,7 @@ namespace npcook.Terminal.Controls
 		{
 			if (size == backing.Length)
 				resize(size * GrowthMultiplier);
-			backing[end] = value;
+			backing[end % backing.Length] = value;
 			end = (end + 1) % backing.Length;
 			size++;
 		}
@@ -76,7 +76,7 @@ namespace npcook.Terminal.Controls
 			if (size == 0)
 				throw new InvalidOperationException("Cannot pop from an empty deque");
 
-			end = (end - 1) % backing.Length;
+			end = (end + backing.Length - 1) % backing.Length;
 			T value = backing[end];
 			backing[end] = default(T);
 			size--;
@@ -101,7 +101,11 @@ namespace npcook.Terminal.Controls
 
 		void resize(int capacity)
 		{
-			throw new NotImplementedException();
+			T[] newBacking = new T[capacity];
+			CopyTo(newBacking, 0);
+			backing = newBacking;
+			start = 0;
+			end = size;
 		}
 
 		public int Count
@@ -128,12 +132,21 @@ namespace npcook.Terminal.Controls
 
 		public void CopyTo(Array array, int index)
 		{
-			Array.Copy(backing, start, array, index, size);
+			bool contiguous = end > start;
+			if (contiguous)
+			{
+				Array.Copy(backing, start, array, index, size);
+			}
+			else
+			{
+				Array.Copy(backing, start, array, index, backing.Length - start);
+				Array.Copy(backing, 0, array, index + backing.Length - start, end);
+			}
 		}
 
 		public void CopyTo(T[] array, int index)
 		{
-			Array.Copy(backing, start, array, index, size);
+			CopyTo((Array) array, index);
 		}
 
 		public T this[int index]
@@ -164,9 +177,30 @@ namespace npcook.Terminal.Controls
 
 		public void Insert(int index, T value)
 		{
-			Array.Copy(backing, index, backing, index + 1, size - index);
-			backing[index] = value;
-			end++;
+			if (index < 0 || index > size)
+				throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
+			if (size == backing.Length)
+				resize(size * GrowthMultiplier);
+
+			int actualIndex = (start + index) % backing.Length;
+			if (actualIndex == end)
+			{
+				PushBack(value);
+				return;
+			}
+			bool contiguous = end > actualIndex && end != backing.Length - 1;
+			if (contiguous)
+			{
+				Array.Copy(backing, actualIndex, backing, actualIndex + 1, end - actualIndex);
+			}
+			else
+			{
+				Array.Copy(backing, 0, backing, 1, end);
+				backing[0] = backing[backing.Length - 1];
+				Array.Copy(backing, actualIndex, backing, actualIndex + 1, backing.Length - actualIndex - 1);
+			}
+			backing[actualIndex] = value;
+			end = (end + 1) % backing.Length;
 			size++;
 		}
 
@@ -194,6 +228,12 @@ namespace npcook.Terminal.Controls
 			if (index < 0 || index >= size)
 				throw new ArgumentOutOfRangeException(nameof(index), index, "Index has to be within the bounds of the collection");
 
+			if (index == 0)
+			{
+				PopFront();
+				return;
+			}
+
 			int actualIndex = (start + index) % backing.Length;
 			int copyCount = Math.Min(size - index - 1, backing.Length - actualIndex - 1);
 			Array.Copy(backing, actualIndex + 1, backing, actualIndex, copyCount);
@@ -203,10 +243,8 @@ namespace npcook.Terminal.Controls
 				Array.Copy(backing, 1, backing, 0, size - index - 1 - copyCount);
 			}
 			size--;
-			end--;
-			if (end == -1)
-				end = backing.Length;
-			backing[size] = default(T);
+			end = (end + backing.Length - 1) % backing.Length;
+			backing[end] = default(T);
 		}
 
 		public struct Enumerator : IEnumerator<T>, IEnumerator

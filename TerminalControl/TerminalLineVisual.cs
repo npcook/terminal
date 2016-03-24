@@ -17,10 +17,29 @@ namespace npcook.Terminal.Controls
 		{ get; }
 
 		// The line this visual represents
+		TerminalLine line;
 		public TerminalLine Line
-		{ get; }
+		{
+			get { return line; }
+			set
+			{
+				Dispatcher.VerifyAccess();
 
-		TerminalRun[] savedRuns = null;
+				if (line == value)
+					return;
+				bool wasNull = line == null;
+				if (line != null)
+					line.RunsChanged -= Line_RunsChanged;
+				line = value;
+				if (line != null)
+				{
+					line.RunsChanged += Line_RunsChanged;
+
+					Terminal.RemoveDeferChangesCallback(this);
+					redraw();
+				}
+			}
+		}
 
 		public int SelectionStart
 		{ get; private set; }
@@ -30,50 +49,67 @@ namespace npcook.Terminal.Controls
 
 		public void Select(int start, int end)
 		{
+			Dispatcher.VerifyAccess();
+
+			if (SelectionStart == start && SelectionEnd == end)
+				return;
 			SelectionStart = start;
 			SelectionEnd = end;
 
-			redraw();
+			scheduleRedraw();
 		}
 
 		public TerminalLineVisual(TerminalControlCore terminal, TerminalLine line)
 		{
 			this.Terminal = terminal;
 			this.Line = line;
+		}
 
-			if (line != null)
-				savedRuns = line.Runs.ToArray();
+		protected override void OnVisualParentChanged(DependencyObject oldParent)
+		{
+			base.OnVisualParentChanged(oldParent);
 
-			line.RunsChanged += Line_RunsChanged;
+			if (Line != null)
+			{
+				if (oldParent != null)
+					Line.RunsChanged -= Line_RunsChanged;
+				if (VisualParent != null)
+				{
+					Line.RunsChanged += Line_RunsChanged;
 
-			redraw();
+					scheduleRedraw();
+				}
+			}
 		}
 
 		private void Line_RunsChanged(object sender, EventArgs e)
 		{
-			lock (this)
-			{
-				savedRuns = Line.Runs.ToArray();
-			}
-			// Redraw all this line's runs
+			scheduleRedraw();
+		}
+
+		void scheduleRedraw()
+		{
 			Action action = () => Dispatcher.Invoke(redraw);
-			if (Terminal.DeferChanges)
-				Terminal.AddDeferChangesCallback(this, action);
-			else
-				action();
+			Terminal.AddDeferChangesCallback(this, action);
 		}
 
 		private void redraw()
 		{
+			Dispatcher.VerifyAccess();
+
 			var context = RenderOpen();
-
-			var textDecorations = new TextDecorationCollection();
-
-			var drawPoint = new System.Windows.Point(0, 0);
-			lock (savedRuns)
+			try
 			{
+				if (line == null)
+					return;
+
+				TextDecorationCollection textDecorations = null;
+				// Stores the previously formatted run
+				FormattedText prevFt = null;
+
+				var drawPoint = new System.Windows.Point(0, 0);
 				int index = 0;
-				foreach (var run in savedRuns)
+				foreach (var run in line.Runs)
 				{
 					if (run.Font.Hidden && Line.Runs[Line.Runs.Count - 1] == run)
 						break;
@@ -91,6 +127,9 @@ namespace npcook.Terminal.Controls
 						background = Terminal.GetFontBackgroundBrush(run.Font);
 					}
 
+					// Format the text for this run.  However, this is drawn NEXT run.  The
+					// background is drawn one run ahead of the text so the text doesn't get
+					// clipped.
 					var ft = new FormattedText(
 						run.Text,
 						System.Globalization.CultureInfo.CurrentUICulture,
@@ -102,42 +141,63 @@ namespace npcook.Terminal.Controls
 						TextFormattingMode.Ideal
 						);
 
-					if (run.Font.Underline)
-						textDecorations.Add(TextDecorations.Underline);
-					if (run.Font.Strike)
-						textDecorations.Add(TextDecorations.Strikethrough);
+					if (run.Font.Underline || run.Font.Strike)
+					{
+						if (textDecorations == null)
+							textDecorations = new TextDecorationCollection(2);
+						else
+							textDecorations.Clear();
 
-					if (textDecorations.Count > 0)
+						if (run.Font.Underline)
+							textDecorations.Add(TextDecorations.Underline);
+						if (run.Font.Strike)
+							textDecorations.Add(TextDecorations.Strikethrough);
+
 						ft.SetTextDecorations(textDecorations);
+					}
 
+					// Draw the background and border for the current run
 					Pen border = null;
 					if (Terminal.DrawRunBoxes)
 						border = new Pen(DebugColors.GetBrush(index), 1);
 
 					var backgroundTopLeft = new System.Windows.Point(Math.Floor(drawPoint.X), Math.Floor(drawPoint.Y));
-					var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace), Math.Ceiling(ft.Height));
+					if (prevFt != null)
+						backgroundTopLeft.X += prevFt.WidthIncludingTrailingWhitespace;
+					var backgroundSize = new Vector(Math.Ceiling(ft.WidthIncludingTrailingWhitespace + 1), Math.Ceiling(ft.Height + 1));
 					context.DrawRectangle(background, border, new Rect(backgroundTopLeft, backgroundSize));
 
-					context.DrawText(ft, drawPoint);
-					drawPoint.X += ft.WidthIncludingTrailingWhitespace;
-
-					textDecorations.Clear();
+					if (prevFt != null)
+					{
+						context.DrawText(prevFt, drawPoint);
+						drawPoint.X += prevFt.WidthIncludingTrailingWhitespace;
+					}
+					prevFt = ft;
 
 					index++;
 				}
-			}
 
-			if (SelectionStart != SelectionEnd)
+				if (prevFt != null)
+					context.DrawText(prevFt, drawPoint);
+
+				// TODO: This selection drawing logic doesn't account for multi-width characters.
+				if (SelectionStart != SelectionEnd)
+				{
+					if (prevFt != null)
+						drawPoint.X += prevFt.WidthIncludingTrailingWhitespace;
+
+					var selectRect = new Rect(
+						new System.Windows.Point(Math.Floor(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart)), 0.0),
+						new System.Windows.Point(Math.Ceiling(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd)), Math.Ceiling(Terminal.CharHeight)));
+
+					var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(128, 90, 180, 230));
+					context.DrawRectangle(brush, null, selectRect);
+				}
+			}
+			finally
 			{
-				var selectRect = new Rect(
-					new System.Windows.Point(Math.Floor(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionStart)), 0.0),
-					new System.Windows.Point(Math.Ceiling(Math.Min(drawPoint.X, Terminal.CharWidth * SelectionEnd)), Math.Ceiling(Terminal.CharHeight)));
-
-				var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(128, 90, 180, 230));
-				context.DrawRectangle(brush, null, selectRect);
+				context.Close();
 			}
-
-			context.Close();
 		}
 	}
 }

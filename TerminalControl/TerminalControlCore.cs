@@ -1,62 +1,85 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace npcook.Terminal.Controls
 {
-	class TerminalControlCore : FrameworkElement
+	class TerminalControlCore : FrameworkElement, IScrollInfo
 	{
 		public static readonly DependencyProperty FontFamilyProperty = DependencyProperty.Register("FontFamily", typeof(FontFamily), typeof(TerminalControlCore), new PropertyMetadata(new FontFamily("Consolas,Courier New"), FontFamilyChanged));
 		public static readonly DependencyProperty FontSizeProperty = DependencyProperty.Register("FontSize", typeof(double), typeof(TerminalControlCore), new PropertyMetadata(12.0, FontSizeChanged));
-		
-		static TerminalControlCore()
+
+		const int historySize = 2000;
+
+		enum SelectionState
 		{
+			None,			// Nothing is selected
+			Selecting,		// Selection is currently being made
+			Selected		// Selection has already been made
 		}
 
-		private static void FontFamilyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+		// Backing for the scroll-back history
+		readonly Deque<TerminalLine> history = new Deque<TerminalLine>(historySize);
+		// Visuals for visible lines.  Always of size terminal.Size.Row
+		Deque<TerminalLineVisual> visuals = new Deque<TerminalLineVisual>(1);
+		// Extra visuals.
+		Deque<TerminalLineVisual> extraVisuals = new Deque<TerminalLineVisual>(1);
+		// The terminal backing this visual representation
+		XtermTerminal terminal = null;
+		// Timer for blinking the caret
+		DispatcherTimer caretTimer;
+		// Backing for the BlinkCursor property
+		bool blinkCursor = true;
+		// Backing for the EnableCaret property
+		bool enableCaret;
+		// Determines whether user is selecting or has selected text
+		SelectionState selectionState;
+		// Point where user started making a selection, relative to history
+		// This point doesn't need to be higher or left-er than selectionEnd
+		Point selectionStart;
+		// Point where user stopped making a selection, relative to history
+		// This point doesn't need to be lower or right-er than selectionStart
+		Point selectionEnd;
+		// Stores brushes that correspond to terminal colors so we don't have to create a new one 
+		// each time
+		Dictionary<Color, SolidColorBrush> brushCache = new Dictionary<Color, SolidColorBrush>();
+		// The ScrollViewer that owns our IScrollInfo implementation
+		ScrollViewer scrollOwner;
+		// Backing for the VerticalOffset property
+		double verticalOffset;
+		// Backing for the HorizontalOffset property
+		double horizontalOffset;
+		// Object to protect deferChangesCallbacks
+		object deferChangesLock = new object();
+		// Holds callbacks that will be called when changes stop being deferred
+		Dictionary<object, Action> deferChangesCallbacks = new Dictionary<object, Action>();
+		// Visuals for each caret type
+		readonly DrawingVisual verticalLineCaret = new DrawingVisual();
+		readonly DrawingVisual blockCaret = new DrawingVisual();
+		readonly DrawingVisual underlineCaret = new DrawingVisual();
+		// Currently displayed caret visual.  This will only refer to one of the above 3 visuals
+		DrawingVisual caret;
+
+		public TerminalControlCore()
 		{
-			var self = d as TerminalControlCore;
-			if (self != null)
-				self.updateCharDimensions();
+			Focusable = false;
+			CanVerticallyScroll = true;
+
+			Cursor = Cursors.IBeam;
+
+			initCaret();
+			initContextMenu();
 		}
-
-		private static void FontSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-		{
-			var self = d as TerminalControlCore;
-			if (self != null)
-				self.updateCharDimensions();
-		}
-
-		void updateCharDimensions()
-		{
-			var ft = new FormattedText("y", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GetFontTypeface(null), FontSize, Brushes.Transparent);
-			CharWidth = ft.Width;
-			CharHeight = ft.Height;
-
-			System.Diagnostics.Debug.Assert(CharWidth > 0 && CharHeight > 0);
-
-			var context = caret.RenderOpen();
-
-			var caretPen = new Pen(Brushes.White, SystemParameters.CaretWidth);
-			caretPen.Freeze();
-			context.DrawLine(caretPen, new System.Windows.Point(0.0, 0.0), new System.Windows.Point(0.0, CharHeight));
-
-			context.Close();
-		}
-
-		public double CharWidth
-		{ get; private set; }
-
-		public double CharHeight
-		{ get; private set; }
 
 		public FontFamily FontFamily
 		{
@@ -70,19 +93,11 @@ namespace npcook.Terminal.Controls
 			set { SetValue(FontFamilyProperty, value); }
 		}
 
-		const int historySize = 2000;
-		
-		// Visuals for the scroll-back history
-		readonly Deque<TerminalLineVisual> history = new Deque<TerminalLineVisual>(historySize);
-		// The terminal backing this visual representation
-		XtermTerminal terminal = null;
-		// Visual for the caret
-		readonly DrawingVisual caret;
-		// Timer for blinking the caret
-		DispatcherTimer caretTimer;
+		public double CharWidth
+		{ get; private set; }
 
-		internal bool DrawRunBoxes
-		{ get; set; }
+		public double CharHeight
+		{ get; private set; }
 
 		public XtermTerminal Terminal
 		{
@@ -100,18 +115,26 @@ namespace npcook.Terminal.Controls
 				}
 				terminal = value;
 
-				// Remove all lines from the visual tree and the screen
-				foreach (var line in history)
-					RemoveVisualChild(line);
+				if (visuals != null)
+				{
+					foreach (var visual in visuals)
+						RemoveVisualChild(visual);
+				}
 				history.Clear();
 
+				visuals = new Deque<TerminalLineVisual>(terminal.Size.Row);
+				extraVisuals = new Deque<TerminalLineVisual>(terminal.Size.Row);
 				// Create new visuals for each line in the new terminal screen
-				foreach (var line in terminal.CurrentScreen)
+				foreach (var item in terminal.CurrentScreen.Select((line, i) => new { line, i }))
 				{
-					var visual = new TerminalLineVisual(this, line);
-					visual.Offset = new Vector(0.0, history.Count * CharHeight);
-					history.PushBack(visual);
+					history.Add(item.line);
+					var visual = new TerminalLineVisual(this, item.line);
+					visual.Offset = new Vector(0.0, item.i * CharHeight);
+					visuals.PushBack(visual);
 					AddVisualChild(visual);
+
+					visual = new TerminalLineVisual(this, null);
+					extraVisuals.PushBack(visual);
 				}
 
 				terminal.CursorPosChanged += Terminal_CursorPosChanged;
@@ -121,6 +144,234 @@ namespace npcook.Terminal.Controls
 				terminal.PrivateModeChanged += Terminal_PrivateModeChanged;
 			}
 		}
+
+		public bool BlinkCursor
+		{
+			get { return blinkCursor; }
+			set
+			{
+				blinkCursor = value;
+
+				Dispatcher.Invoke(updateCursorState);
+			}
+		}
+
+		public bool ShowCursor
+		{
+			get { return terminal.ShowCursor; }
+		}
+
+		public bool EnableCaret
+		{
+			get { return enableCaret; }
+			set
+			{
+				if (enableCaret == value || terminal == null)
+					return;
+
+				if (value)
+				{
+					updateCursorState();
+				}
+				else if (ShowCursor)
+				{
+					caretTimer.Stop();
+					caret.Opacity = 0.5;
+				}
+				enableCaret = value;
+			}
+		}
+
+		// Begin a group of changes
+		public void BeginChange()
+		{
+			lock (deferChangesLock)
+			{
+				DeferChanges = true;
+			}
+		}
+
+		// End a group of changes and update all visuals in one swoop
+		public void EndChange()
+		{
+			IEnumerable<Action> callbacks = Enumerable.Empty<Action>();
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+				{
+					DeferChanges = false;
+					callbacks = deferChangesCallbacks.Values.ToArray();
+					deferChangesCallbacks.Clear();
+				}
+			}
+			foreach (var callback in callbacks)
+				callback();
+		}
+
+		// Register a delegate to be called when changes should be applied.  If the same callee
+		// is passed multiple times, the last callback overwrites the previous callbacks
+		public void AddDeferChangesCallback(object callee, Action callback)
+		{
+			bool callNow = false;
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+					deferChangesCallbacks[callee] = callback;
+				else
+					callNow = true;
+			}
+			if (callNow)
+				callback();
+		}
+
+		public void RemoveDeferChangesCallback(object callee)
+		{
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+					deferChangesCallbacks.Remove(callee);
+			}
+		}
+
+		public void AddMessage(string text, TerminalFont font)
+		{
+			prepareHistory(1);
+
+			var line = new TerminalLine();
+			int leftPadding = (Terminal.Size.Col - text.Length) / 2;
+			int rightPadding = (Terminal.Size.Col - text.Length + 1) / 2;
+			line.SetCharacters(0, new string(' ', leftPadding), font);
+			line.SetCharacters(leftPadding, text, font);
+			line.SetCharacters(leftPadding + text.Length, new string(' ', rightPadding), font);
+
+			var visual = new TerminalLineVisual(this, line);
+			visual.Offset = new Vector(0.0, history.Count * CharHeight);
+			AddVisualChild(visual);
+			history.PushBack(line);
+		}
+
+		private static void FontFamilyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+		{
+			// Update character dimensions whenever a font property changes
+			var self = d as TerminalControlCore;
+			if (self != null)
+				self.updateCharDimensions();
+		}
+
+		private static void FontSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+		{
+			// Update character dimensions whenever a font property changes
+			var self = d as TerminalControlCore;
+			if (self != null)
+				self.updateCharDimensions();
+		}
+
+		void initCaret()
+		{
+			caret = verticalLineCaret;
+			AddVisualChild(caret);
+
+			// Show and hide the caret with the interval given by the system blink time
+			uint caretBlinkTime = NativeMethods.GetCaretBlinkTime();
+			caretTimer = new DispatcherTimer(
+				TimeSpan.FromMilliseconds(caretBlinkTime),
+				DispatcherPriority.Normal,
+				(sender, e) => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0),
+				Dispatcher);
+			caretTimer.Start();
+		}
+
+		void initContextMenu()
+		{
+			ContextMenu = new ContextMenu();
+			ContextMenu.BeginInit();
+
+			ContextMenu.ItemsSource = new MenuItem[]
+			{
+				new MenuItem() { Header = "Copy", Command = new RelayCommand(this_Copy, this_CanCopy) },
+				new MenuItem() { Header = "Paste", Command = new RelayCommand(this_Paste, this_CanPaste) },
+			};
+
+			ContextMenu.EndInit();
+		}
+
+		void updateCharDimensions()
+		{
+			// Use the dimensions of the 'y' character as our width and height
+			var ft = new FormattedText("y", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GetFontTypeface(null), FontSize, Brushes.Transparent);
+			CharWidth = ft.Width;
+			CharHeight = ft.Height;
+
+			System.Diagnostics.Debug.Assert(CharWidth > 0 && CharHeight > 0);
+
+			// Redraw caret visuals to reflect the new character dimensions
+			{
+				var context = verticalLineCaret.RenderOpen();
+
+				var caretPen = new Pen(Brushes.White, SystemParameters.CaretWidth);
+				caretPen.Freeze();
+				context.DrawLine(
+					caretPen,
+					new System.Windows.Point(0.0, 0.0),
+					new System.Windows.Point(0.0, CharHeight));
+
+				context.Close();
+			}
+			{
+				var context = blockCaret.RenderOpen();
+
+				context.DrawRectangle(
+					Brushes.White, null, new Rect(0.0, 0.0, CharWidth, CharHeight));
+
+				context.Close();
+			}
+			{
+				var context = underlineCaret.RenderOpen();
+
+				context.DrawRectangle(
+					Brushes.White, null,
+					new Rect(
+						0.0, CharHeight - SystemParameters.CaretWidth,
+						CharWidth, SystemParameters.CaretWidth));
+
+				context.Close();
+			}
+		}
+
+		enum CaretType
+		{
+			VerticalLine,
+			Block,
+			Underline,
+		}
+
+		void setCaretType(CaretType type)
+		{
+			if (caret != null)
+				RemoveVisualChild(caret);
+
+			switch (type)
+			{
+				case CaretType.VerticalLine:
+					caret = verticalLineCaret;
+					break;
+
+				case CaretType.Block:
+					caret = blockCaret;
+					break;
+
+				case CaretType.Underline:
+					caret = underlineCaret;
+					break;
+			}
+
+			AddVisualChild(caret);
+
+			updateCaret();
+		}
+
+		internal bool DrawRunBoxes
+		{ get; set; }
 
 		private void updateCursorState()
 		{
@@ -156,49 +407,8 @@ namespace npcook.Terminal.Controls
 			}
 		}
 
-		bool blinkCursor = true;
-		public bool BlinkCursor
-		{
-			get { return blinkCursor; }
-			set
-			{
-				blinkCursor = value;
-
-				Dispatcher.Invoke(updateCursorState);
-			}
-		}
-
 		protected bool BlinkCursorCore
-		{
-			get { return BlinkCursor ^ terminal.BlinkCursor; }
-		}
-		
-		public bool ShowCursor
-		{
-			get { return terminal.ShowCursor; }
-		}
-
-		bool enableCaret;
-		public bool EnableCaret
-		{
-			get { return enableCaret; }
-			set
-			{
-				if (enableCaret == value || terminal == null)
-					return;
-
-				if (value)
-				{
-					updateCursorState();
-				}
-				else if (ShowCursor)
-				{
-					caretTimer.Stop();
-					caret.Opacity = 0.5;
-				}
-				enableCaret = value;
-			}
-		}
+		{ get { return BlinkCursor ^ terminal.BlinkCursor; } }
 
 		protected bool historyEnabled
 		{ get { return terminal.CurrentScreen == terminal.Screen; } }
@@ -206,43 +416,44 @@ namespace npcook.Terminal.Controls
 		protected int screenIndex
 		{ get { return history.Count - terminal.Size.Row; } }
 
-		void initContextMenu()
-		{
-			ContextMenu = new ContextMenu();
-			ContextMenu.BeginInit();
-
-			ContextMenu.ItemsSource = new MenuItem[]
-			{
-				new MenuItem() { Header = "Copy", Command = new RelayCommand(this_Copy, this_CanCopy) },
-				new MenuItem() { Header = "Paste", Command = new RelayCommand(this_Paste, this_CanPaste) },
-			};
-
-			ContextMenu.EndInit();
-		}
-
 		string getSelectedText()
 		{
+			if (selectionState != SelectionState.Selected)
+				return "";
+
 			var builder = new StringBuilder();
-			bool first = true;
-			foreach (var line in selectedLines)
+
+			if (selectionTop.Row == selectionBottom.Row)
+				builder.Append(history[selectionTop.Row].GetCharacters(selectionTop.Col, selectionBottom.Col - selectionTop.Col));
+			else
 			{
-				if (first)
-					first = false;
-				else
-					builder.Append(Environment.NewLine);
-				builder.Append(line.Line.GetCharacters(line.SelectionStart, Math.Min(line.SelectionEnd - line.SelectionStart, line.Line.Length)));
+				for (int i = selectionTop.Row; i <= selectionBottom.Row; ++i)
+				{
+					var line = history[i];
+					bool first = i == selectionTop.Row;
+					bool last = i == selectionBottom.Row;
+					if (first)
+						builder.Append(line.GetCharacters(selectionTop.Col, line.Length - selectionTop.Col));
+					else if (last)
+						builder.Append(line.GetCharacters(0, selectionBottom.Col));
+					else
+						builder.Append(line.GetCharacters(0, line.Length));
+
+					if (!last)
+						builder.Append(Environment.NewLine);
+				}
 			}
 			return builder.ToString();
 		}
 
 		bool this_CanCopy(object _)
 		{
-			return selectedLines.Count > 0;
+			return selectionState == SelectionState.Selected;
 		}
 
 		void this_Copy(object _)
 		{
-			if (selectedLines.Count > 0)
+			if (selectionState == SelectionState.Selected)
 				Clipboard.SetText(getSelectedText());
 		}
 
@@ -267,54 +478,56 @@ namespace npcook.Terminal.Controls
 			}
 		}
 
-		public TerminalControlCore()
-		{
-			Focusable = false;
-
-			Cursor = Cursors.IBeam;
-
-			caret = new DrawingVisual();
-			AddVisualChild(caret);
-
-			uint caretBlinkTime = NativeMethods.GetCaretBlinkTime();
-			caretTimer = new DispatcherTimer(
-				TimeSpan.FromMilliseconds(caretBlinkTime), 
-				DispatcherPriority.Normal, 
-				(sender, e) => caret.Opacity = (caret.Opacity > 0.5 ? 0.0 : 1.0), 
-                Dispatcher);
-			caretTimer.Start();
-
-			initContextMenu();
-		}
-
 		protected override HitTestResult HitTestCore(PointHitTestParameters hitTestParameters)
 		{
 			double Y = hitTestParameters.HitPoint.Y;
 			int lineIndex = (int) (Y / CharHeight);
-			if (lineIndex < 0 || lineIndex >= history.Count)
+			if (lineIndex < 0 || lineIndex >= visuals.Count)
 				return null;
-			return new PointHitTestResult(history[lineIndex], hitTestParameters.HitPoint);
+			return new PointHitTestResult(visuals[lineIndex], hitTestParameters.HitPoint);
 		}
 
-		protected override Size ArrangeOverride(Size finalSize)
+		Point selectionTop
 		{
-			return base.ArrangeOverride(finalSize);
+			get
+			{
+				if (selectionStart.Row < selectionEnd.Row)
+					return selectionStart;
+				else if (selectionStart.Row > selectionEnd.Row)
+					return selectionEnd;
+				else if (selectionStart.Col < selectionEnd.Col)
+					return selectionStart;
+				else
+					return selectionEnd;
+			}
 		}
 
-		bool selecting = false;
-		Point selectionStart;
-		List<TerminalLineVisual> selectedLines = new List<TerminalLineVisual>();
+		Point selectionBottom
+		{
+			get
+			{
+				if (selectionStart.Row < selectionEnd.Row)
+					return selectionEnd;
+				else if (selectionStart.Row > selectionEnd.Row)
+					return selectionStart;
+				else if (selectionStart.Col < selectionEnd.Col)
+					return selectionEnd;
+				else
+					return selectionStart;
+			}
+		}
+
 		protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
 		{
 			base.OnMouseLeftButtonDown(e);
 
 			var position = e.GetPosition(this);
-			selectionStart = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
-			selecting = true;
+			selectionStart = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight + VerticalOffset));
+			selectionEnd = selectionStart;
+			selectionState = SelectionState.Selecting;
 
-			foreach (var line in selectedLines)
-				line.Select(0, 0);
-			selectedLines.Clear();
+			foreach (var visual in visuals)
+				visual.Select(0, 0);
 
 			CaptureMouse();
 		}
@@ -323,40 +536,38 @@ namespace npcook.Terminal.Controls
 		{
 			base.OnMouseMove(e);
 
-			if (selecting)
+			if (selectionState == SelectionState.Selecting)
 			{
-				var newSelectedLines = new List<TerminalLineVisual>();
-
 				var position = e.GetPosition(this);
-				Point selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (position.Y / CharHeight));
+				int visualIndex = Math.Min(Math.Max(0, (int) (position.Y / CharHeight)), visuals.Count - 1);
+				selectionEnd = new Point((int) (position.X / CharWidth + 0.5), (int) (visualIndex + VerticalOffset));
 
-				bool swapPoints = selectionStart.Row == selectionEnd.Row ? selectionStart.Col > selectionEnd.Col : selectionStart.Row > selectionEnd.Row;
+				updateSelectedVisuals();
+			}
+		}
 
-				Point firstPoint = swapPoints ? selectionEnd : selectionStart;
-				Point secondPoint = swapPoints ? selectionStart : selectionEnd;
-
-				if (firstPoint.Row == secondPoint.Row)
+		void updateSelectedVisuals()
+		{
+			if (selectionState == SelectionState.None)
+				return;
+			foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+			{
+				int historyIndex = (int) (item.i + VerticalOffset);
+				if (historyIndex >= selectionTop.Row && historyIndex <= selectionBottom.Row)
 				{
-					history[selectionStart.Row].Select(firstPoint.Col, secondPoint.Col);
-					newSelectedLines.Add(history[selectionStart.Row]);
+					bool first = historyIndex == selectionTop.Row;
+					bool last = historyIndex == selectionBottom.Row;
+					if (first && last)
+						item.visual.Select(selectionTop.Col, selectionBottom.Col);
+					else if (first)
+						item.visual.Select(selectionTop.Col, item.visual.Line.Length);
+					else if (last)
+						item.visual.Select(0, selectionBottom.Col);
+					else
+						item.visual.Select(0, item.visual.Line.Length);
 				}
 				else
-				{
-					for (int i = firstPoint.Row; i <= secondPoint.Row; ++i)
-					{
-						if (i == firstPoint.Row)
-							history[i].Select(firstPoint.Col, terminal.Size.Col);
-						else if (i == secondPoint.Row)
-							history[i].Select(0, secondPoint.Col);
-						else
-							history[i].Select(0, terminal.Size.Col);
-						newSelectedLines.Add(history[i]);
-					}
-				}
-
-				foreach (var line in selectedLines.Where(visual => !newSelectedLines.Contains(visual)))
-					line.Select(0, 0);
-				selectedLines = newSelectedLines;
+					item.visual.Select(0, 0);
 			}
 		}
 
@@ -364,7 +575,10 @@ namespace npcook.Terminal.Controls
 		{
 			base.OnMouseLeftButtonUp(e);
 
-			selecting = false;
+			if (selectionStart.Col != selectionEnd.Col || selectionStart.Row != selectionEnd.Row)
+				selectionState = SelectionState.Selected;
+			else
+				selectionState = SelectionState.None;
 			ReleaseMouseCapture();
 		}
 
@@ -384,70 +598,145 @@ namespace npcook.Terminal.Controls
 
 		private void prepareHistory(int newLines)
 		{
-			bool needsMeasure = history.Count < historySize;
-
-			if (history.Count + newLines == historySize + 1)
+			while (history.Count + newLines > historySize)
 			{
-				for (int i = 0; i < newLines; ++i)
-					RemoveVisualChild(history.PopFront());
-
-				foreach (var it in history.Select((visual, index) => new { visual, index }))
-				{
-					it.visual.Offset = new Vector(0.0, it.index * CharHeight);
-				}
+				history.PopFront();
 			}
+		}
 
-			if (needsMeasure)
-				InvalidateMeasure();
+		private TerminalLineVisual recycleVisual(TerminalLineVisual visual)
+		{
+			RemoveVisualChild(visual);
+			visual.Line = null;
+			visual.Select(0, 0);
+			visual.Offset = new Vector(-1000, -1000);
+
+			var newVisual = extraVisuals.PopFront();
+			extraVisuals.PushBack(visual);
+			AddVisualChild(newVisual);
+			return newVisual;
 		}
 
 		private void Terminal_LinesMoved(object sender, LinesMovedEventArgs e)
 		{
 			Dispatcher.Invoke(() =>
 			{
-				bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
-				int insertBase = screenIndex + e.AddedLinesIndex;
-
-				if (addToHistory)
+				try
 				{
-					if (history.Count == historySize)
-						insertBase--;
-					prepareHistory(1);
-				}
-				else
-				{
-					for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
-					{
-						var visual = history[screenIndex + e.RemovedLinesIndex + i];
-						RemoveVisualChild(visual);
-					}
+					bool atEnd = VerticalOffset + ViewportHeight == ExtentHeight;
+					bool historyShifted = history.Count == historySize;
+					bool addToHistory = historyEnabled && e.OldIndex == 1 && e.NewIndex == 0;
+					int insertBase = screenIndex + e.AddedLinesIndex;
 
-					for (int i = 0; i < e.Count; ++i)
-					{
-						history[screenIndex + e.OldIndex + i].Offset = new Vector(0.0, (screenIndex + e.NewIndex + i) * CharHeight);
-					}
-					
-					int removeBase = screenIndex + e.RemovedLinesIndex;
-					// Reversed loop because removal requires all succeeding lines to shift up.
-					// Removing the final lines first means less or no shifting has to happen.
-					for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
-						history.RemoveAt(removeBase + i);
-				}
-
-				for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
-				{
-					var newVisual = new TerminalLineVisual(this, terminal.CurrentScreen[e.AddedLinesIndex + i]);
 					if (addToHistory)
 					{
-						history.PushBack(newVisual);
-						insertBase++;
+						prepareHistory(1);
 					}
 					else
-						history.Insert(insertBase + i, newVisual);
-					newVisual.Offset = new Vector(0.0, (insertBase + i) * CharHeight);
-					AddVisualChild(newVisual);
+					{
+						int removeBase = screenIndex + e.RemovedLinesIndex;
+						for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+							history.RemoveAt(removeBase + i);
+					}
+
+					for (int i = 0; i < Math.Abs(e.NewIndex - e.OldIndex); ++i)
+					{
+						var line = terminal.CurrentScreen[e.AddedLinesIndex + i];
+						if (addToHistory)
+							history.PushBack(line);
+						else
+							history.Insert(insertBase + i, line);
+					}
+
+					if (addToHistory)
+					{
+						if (historyShifted)
+						{
+							if (!atEnd)
+								verticalOffset -= 1;
+							else
+							{
+								shiftVisuals(1, 0, terminal.Size.Row - 1);
+								updateVisuals();
+							}
+						}
+						else if (atEnd)
+							scrollOwner.ScrollToBottom();
+					}
+					else
+					{
+						int removeBase = e.RemovedLinesIndex;
+						insertBase = e.AddedLinesIndex;
+						for (int i = Math.Abs(e.NewIndex - e.OldIndex) - 1; i >= 0; --i)
+						{
+							var visual = visuals[removeBase + i];
+							if (insertBase > removeBase)
+								insertBase--;
+							visuals.RemoveAt(removeBase + i);
+							visuals.Insert(insertBase + i, recycleVisual(visual));
+							if (removeBase > insertBase)
+								removeBase++;
+						}
+
+						verifyVisuals();
+
+						updateVisuals();
+					}
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine(ex);
 				}
 			});
+		}
+
+		void shiftVisuals(int index, int newIndex, int count)
+		{
+			Contract.Requires(count > 0);
+			Contract.Requires(index < visuals.Count);
+			Contract.Requires(newIndex < visuals.Count);
+
+			if (newIndex > index)
+			{
+				for (int i = 0; i < newIndex - index; ++i)
+				{
+					var visual = visuals[newIndex + count - 1];
+					visual.Select(0, 0);
+					visuals.RemoveAt(newIndex + count - 1);
+					visuals.Insert(index, recycleVisual(visual));
+				}
+			}
+			else
+			{
+				for (int i = 0; i < index - newIndex; ++i)
+				{
+					var visual = visuals[newIndex];
+					visual.Select(0, 0);
+					visuals.RemoveAt(newIndex);
+					visuals.Insert(index + count - 1, recycleVisual(visual));
+				}
+			}
+
+			verifyVisuals();
+		}
+
+		void updateVisuals()
+		{
+			if (terminal == null)
+				return;
+
+			for (int i = 0; i < (int) (ViewportHeight + 0.01); ++i)
+			{
+				var line = history[(int) VerticalOffset + i];
+				visuals[i].Line = line;
+			}
+
+			foreach (var item in visuals.Select((visual, i) => new { visual, i }))
+				item.visual.Offset = new Vector(0.0, item.i * CharHeight);
+
+			updateSelectedVisuals();
+
+			updateCaret();
 		}
 
 		private void Terminal_CursorPosChanged(object sender, EventArgs e)
@@ -460,8 +749,46 @@ namespace npcook.Terminal.Controls
 				action();
 		}
 
-		private void Terminal_SizeChanged(object sender, EventArgs e)
-		{ }
+		private void Terminal_SizeChanged(object sender, SizeChangedEventArgs e)
+		{
+			int rowDiff = terminal.Size.Row - visuals.Count;
+			for (int i = 0; i < rowDiff; ++i)
+			{
+				history.PushBack(terminal.CurrentScreen[terminal.Size.Row - rowDiff + i]);
+				var newVisual = new TerminalLineVisual(this, history[history.Count - 1]);
+				visuals.PushBack(newVisual);
+				AddVisualChild(newVisual);
+
+				newVisual = new TerminalLineVisual(this, null);
+				extraVisuals.PushBack(newVisual);
+			}
+			
+			for (int i = 0; i > rowDiff; --i)
+			{
+				TerminalLineVisual oldVisual;
+				if (visuals.Count - 1 > e.OldCursorPos.Row)
+					oldVisual = visuals.PopBack();
+				else
+				{
+					verticalOffset++;
+					oldVisual = visuals.PopFront();
+				}
+
+				RemoveVisualChild(oldVisual);
+				oldVisual.Line = null;
+
+				while (history[history.Count - 1].IsEmpty() && history.Count > terminal.Size.Row)
+					history.PopBack();
+
+				extraVisuals.PopFront();
+			}
+
+			verifyVisuals();
+			
+			InvalidateMeasure();
+			SetVerticalOffset(verticalOffset);
+			updateVisuals();
+		}
 
 		private void Terminal_ScreenChanged(object sender, EventArgs e)
 		{
@@ -470,32 +797,37 @@ namespace npcook.Terminal.Controls
 				bool mainScreen = terminal.CurrentScreen == terminal.Screen;
 				if (mainScreen)
 				{
-					for (int i = 0; i < terminal.CurrentScreen.Count; ++i)
-						RemoveVisualChild(history.PopBack());
+					foreach (var line in terminal.CurrentScreen)
+						history.PopBack();
+					SetVerticalOffset(VerticalOffset);
 				}
 				else
 				{
+					bool atEnd = false;
+					if (VerticalOffset + ViewportHeight == ExtentHeight)
+						atEnd = true;
+					prepareHistory(terminal.Size.Row);
 					foreach (var line in terminal.CurrentScreen)
+						history.PushBack(line);
+					if (atEnd)
 					{
-						var visual = new TerminalLineVisual(this, line);
-						visual.Offset = new Vector(0.0, history.Count * CharHeight);
-						AddVisualChild(visual);
-						history.PushBack(visual);
+						verticalOffset--;
+						scrollOwner.ScrollToBottom();
 					}
 				}
-
-				InvalidateMeasure();
 			});
 		}
 
 		protected override Size MeasureOverride(Size availableSize)
 		{
+			availableSize.Width = double.PositiveInfinity;
+			availableSize.Height = double.PositiveInfinity;
 			if (terminal != null)
 			{
 				// The size is based on the number of rows and columns in the terminal
 				return new Size(
-					Math.Min(availableSize.Width, CharWidth * terminal.Size.Col),
-					Math.Max(0, Math.Min(availableSize.Height, CharHeight * history.Count)));
+					CharWidth * terminal.Size.Col,
+					CharHeight * terminal.Size.Row);
 			}
 			else
 				return Size.Empty;
@@ -504,7 +836,7 @@ namespace npcook.Terminal.Controls
 		protected override int VisualChildrenCount
 		{
 			// Each line is a child, plus 1 for the caret
-			get { return history.Count + 1; }
+			get { return visuals.Count + 1; }
 		}
 
 		protected override Visual GetVisualChild(int index)
@@ -513,18 +845,21 @@ namespace npcook.Terminal.Controls
 				throw new ArgumentOutOfRangeException("index", index, "");
 
 			// Make sure the caret comes last so it gets drawn over the lines
-			if (index < history.Count)
-				return history[index];
+			if (index < visuals.Count)
+				return visuals[index];
 			else
 				return caret;
 		}
 
 		void updateCaret()
 		{
-			int adjustedRowPos = terminal.CursorPos.Row + history.Count - terminal.Size.Row;
-			// Add 0.5 to each dimension so the caret is aligned to pixels
+			int adjustedRowPos = terminal.CursorPos.Row + (int) (ExtentHeight - ViewportHeight - VerticalOffset);
 			if (terminal != null)
+			{
+				// Add 0.5 to each dimension so the caret is aligned to pixels
+				// It's possible the caret is offscreen after this if adjustedRowPos > ViewportHeight
 				caret.Offset = new Vector(Math.Floor(CharWidth * terminal.CursorPos.Col) + 0.5, Math.Floor(CharHeight * adjustedRowPos) + 0.5);
+			}
 
 			if (ShowCursor && BlinkCursorCore)
 			{
@@ -534,16 +869,20 @@ namespace npcook.Terminal.Controls
 			}
 		}
 
-		Dictionary<Color, SolidColorBrush> brushCache = new Dictionary<Color, SolidColorBrush>();
 		internal SolidColorBrush GetBrush(Color color)
 		{
+			const int MaxCacheSize = 512;
+
 			SolidColorBrush brush;
 			if (brushCache.TryGetValue(color, out brush))
 				return brush;
 
+			if (brushCache.Count == MaxCacheSize)
+				brushCache.Clear();
 			brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color.R, color.G, color.B));
 			brush.Freeze();
 			brushCache.Add(color, brush);
+
 			return brush;
 		}
 
@@ -563,54 +902,183 @@ namespace npcook.Terminal.Controls
 		}
 
 		// Bulk changes can be deferred to avoid redundantly updating visuals
-		internal bool DeferChanges
-		{ get; private set; }
+		private bool DeferChanges
+		{ get; set; }
 
-		Dictionary<object, Action> deferChangesCallbacks = new Dictionary<object, Action>();
-
-		// Begin a group of changes
-		public void BeginChange()
+		[System.Diagnostics.Conditional("DEBUG")]
+		void verifyVisuals()
 		{
-			DeferChanges = true;
+			foreach (var visual in visuals)
+				System.Diagnostics.Debug.Assert(visual != null);
 		}
 
-		// End a group of changes and update all visuals in one swoop
-		public void EndChange()
-		{
-			if (!DeferChanges)
-				throw new InvalidOperationException("Must be deferring changes before deferring changes can end");
+		// IScrollInfo implementation
+		
+		public bool CanVerticallyScroll
+		{ get; set; }
 
-			DeferChanges = false;
-			foreach (var kvp in deferChangesCallbacks)
-				kvp.Value();
-			deferChangesCallbacks.Clear();
+		public bool CanHorizontallyScroll
+		{ get; set; }
+
+		public double ExtentWidth
+		{
+			get
+			{
+				if (terminal != null)
+					return terminal.Size.Col;
+				else
+					return 0;
+			}
 		}
 
-		// Register a delegate to be called when changes should be applied.  If the same callee
-		// is passed multiple times, the last callback overwrites the previous callbacks
-		public void AddDeferChangesCallback(object callee, Action callback)
+		public double ExtentHeight
 		{
-			if (!DeferChanges)
-				throw new InvalidOperationException("Must be deferring changes before a callback can be added");
-
-			deferChangesCallbacks[callee] = callback;
+			get
+			{
+				return history.Count;
+			}
 		}
 
-		public void AddMessage(string text, TerminalFont font)
+		public double ViewportWidth
 		{
-			prepareHistory(1);
-			
-			var line = new TerminalLine();
-			int leftPadding = (Terminal.Size.Col - text.Length) / 2;
-			int rightPadding = (Terminal.Size.Col - text.Length + 1) / 2;
-            line.SetCharacters(0, new string(' ', leftPadding), font);
-			line.SetCharacters(leftPadding, text, font);
-			line.SetCharacters(leftPadding + text.Length, new string(' ', rightPadding), font);
+			get
+			{
+				if (terminal != null)
+					return terminal.Size.Col;
+				else
+					return 0;
+			}
+		}
 
-			var visual = new TerminalLineVisual(this, line);
-			visual.Offset = new Vector(0.0, history.Count * CharHeight);
-			AddVisualChild(visual);
-			history.PushBack(visual);
+		public double ViewportHeight
+		{
+			get
+			{
+				if (terminal != null)
+					return terminal.Size.Row;
+				else
+					return 0;
+			}
+		}
+
+		public double HorizontalOffset
+		{
+			get { return horizontalOffset; }
+			private set
+			{
+				horizontalOffset = (int) value;
+				updateVisuals();
+			}
+		}
+
+		public double VerticalOffset
+		{
+			get { return verticalOffset; }
+			private set
+			{
+				if ((int) (value + 0.5) == (int) (verticalOffset + 0.5))
+					return;
+				int diff = (int) (value - verticalOffset);
+				verticalOffset = value;
+
+				// If we scroll over one screen at once, there's nothing to shift.
+				if (Math.Abs(diff) < visuals.Count)
+				{
+					if (diff > 0)
+						shiftVisuals(diff, 0, visuals.Count - diff);
+					else if (diff < 0)
+						shiftVisuals(0, -diff, visuals.Count + diff);
+				}
+				updateVisuals();
+			}
+		}
+
+		public ScrollViewer ScrollOwner
+		{
+			get { return scrollOwner; }
+			set
+			{
+				scrollOwner = value;
+				HorizontalOffset = 0;
+				VerticalOffset = 0;
+			}
+		}
+
+		public void LineUp()
+		{
+			SetVerticalOffset(VerticalOffset - 1);
+		}
+
+		public void LineDown()
+		{
+			SetVerticalOffset(VerticalOffset + 1);
+		}
+
+		public void LineLeft()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void LineRight()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void PageUp()
+		{
+			SetVerticalOffset(VerticalOffset - ViewportHeight);
+		}
+
+		public void PageDown()
+		{
+			SetVerticalOffset(VerticalOffset + ViewportHeight);
+		}
+
+		public void PageLeft()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void PageRight()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void MouseWheelUp()
+		{
+			SetVerticalOffset(VerticalOffset - SystemParameters.WheelScrollLines);
+		}
+
+		public void MouseWheelDown()
+		{
+			SetVerticalOffset(VerticalOffset + SystemParameters.WheelScrollLines);
+		}
+
+		public void MouseWheelLeft()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void MouseWheelRight()
+		{
+			throw new NotImplementedException();
+		}
+
+		public void SetHorizontalOffset(double offset)
+		{
+			HorizontalOffset = offset;
+			ScrollOwner.InvalidateScrollInfo();
+		}
+
+		public void SetVerticalOffset(double offset)
+		{
+			VerticalOffset = Math.Max(0, Math.Min(ExtentHeight - ViewportHeight, offset));
+			ScrollOwner.InvalidateScrollInfo();
+		}
+
+		public Rect MakeVisible(Visual visual, Rect rectangle)
+		{
+			throw new NotImplementedException();
 		}
 	}
 }
