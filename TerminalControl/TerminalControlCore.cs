@@ -777,10 +777,23 @@ namespace npcook.Terminal.Controls
 				RemoveVisualChild(oldVisual);
 				oldVisual.Line = null;
 
-				while (history[history.Count - 1].IsEmpty() && history.Count > terminal.Size.Row)
-					history.PopBack();
-
 				extraVisuals.PopFront();
+			}
+
+			if (rowDiff < 0)
+			{
+				if (terminal.CurrentScreen == terminal.Screen)
+				{
+					while (history[history.Count - 1].IsEmpty() && history.Count > terminal.Size.Row)
+						history.PopBack();
+				}
+				else
+				{
+					for (int i = 0; i > rowDiff; --i)
+					{
+						history.PopBack();
+					}
+				}
 			}
 
 			verifyVisuals();
