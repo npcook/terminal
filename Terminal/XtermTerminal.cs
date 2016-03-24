@@ -493,8 +493,8 @@ namespace npcook.Terminal
 					break;
 
 				case XtermDecMode.UseAltScreenAndSaveCursor:
-					CursorPos = mainScreenSavedCursorPos;
 					ChangeToScreen(false);
+					CursorPos = mainScreenSavedCursorPos;
 					break;
 
 				case XtermDecMode.AppCursorKeys:
@@ -577,41 +577,50 @@ namespace npcook.Terminal
 				switch (kind)
 				{
 					case '@':
+						// ICH: Insert x = 1 blank characters at cursor, moving the cursor accordingly.
 						InsertCharacters(new string(' ', getAtOrDefault(codes, 0, 1)), CurrentFont);
 						break;
 
 					case 'A':
+						// CUU: Move cursor up x = 1 rows, clamped to screen size.
 						CursorPos = new Point(CursorPos.Col, CursorPos.Row - getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'B':
+						// CUD: Move cursor down x = 1 rows, clamped to screen size.
 						CursorPos = new Point(CursorPos.Col, CursorPos.Row + getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'C':
 					case 'a':
+						// CUF: Move cursor right x = 1 columns, clamped to screen size.
 						CursorPos = new Point(CursorPos.Col + getAtOrDefault(codes, 0, 1), CursorPos.Row);
 						break;
 
 					case 'D':
+						// CUB: Move cursor left x = 1 columns, clamped to screen size.
 						CursorPos = new Point(CursorPos.Col - getAtOrDefault(codes, 0, 1), CursorPos.Row);
 						break;
 
 					case 'E':
-						CursorPos = new Point(0, CursorPos.Row + 1);
+						// CNL: Move cursor to the first column of the xth = 1 row below the cursor.
+						CursorPos = new Point(0, CursorPos.Row + getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'F':
-						CursorPos = new Point(0, CursorPos.Row - 1);
+						// CPL: Move cursor to the first column of the xth = 1 row above the cursor.
+						CursorPos = new Point(0, CursorPos.Row - getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'G':
 					case '`':
+						// CHA: Move cursor to the xth = 1 column of the current row.
 						CursorPos = new Point(getAtOrDefault(codes, 0, 1) - 1, CursorPos.Row);
 						break;
 
 					case 'H':
 					case 'f':
+						// CUP: Move cursor to the xth = 1 row and yth = 1 column of the screen.
 						{
 							int row = getAtOrDefault(codes, 0, 1);
 							int col = getAtOrDefault(codes, 1, 1);
@@ -620,10 +629,20 @@ namespace npcook.Terminal
 						break;
 
 					case 'I':
-						tab(false);
+						// CHT: Move the cursor forward x = 1 tabstops.  Tabstops seem to be every 8 characters.
+						int times = getAtOrDefault(codes, 0, 1);
+						for (int i = 0; i < times; ++i)
+							tab(false);
 						break;
 
 					case 'J':
+						// ED: Erase certain lines depending on x = 0 WITHOUT changing the cursor 
+						//     position:
+						//     x = 0: Erase everything under and to the right of the cursor on the 
+						//            current line, then everything on the lines underneath.
+						//     x = 1: Erase everything to the left (not under?) of the cursor on 
+						//            the current line, then everything on the lines above.
+						//     x = 2: Erase everything.
 						switch (getAtOrDefault(codes, 0, 0))
 						{
 							case 0:
@@ -655,7 +674,16 @@ namespace npcook.Terminal
 						CursorPos = oldCursorPos;
 						break;
 
+					// UNIMPLEMENTED: 
+					// DECSED: Do the same as ED, except respect the character
+					//         protection attribute set with DECSCA?
+
 					case 'K':
+						// EL: Erase a portion of the line the cursor is on depending on x = 0
+						//     WITHOUT changing the cursor position:
+						//     x = 0: Erase everything under and to the right of the cursor
+						//     x = 1: Erase everything under and to the left of the cursor
+						//     x = 2: Erase the entire line
 						switch (getAtOrDefault(codes, 0, 0))
 						{
 							case 0:
@@ -675,13 +703,24 @@ namespace npcook.Terminal
 						CursorPos = oldCursorPos;
 						break;
 
+					// UNIMPLEMENTED: 
+					// DECSEL: Do the same as EL, except respect the character
+					//         protection attribute set with DECSCA?
+
 					case 'L':
+						// IL: Insert x = 1 lines at the cursor, scrolling using the scroll region
+						//     if necessary WITHOUT moving the cursor.  The insertion happens just
+						//     before the current line (so the current line is pushed down).
 						{
 							int rows = getAtOrDefault(codes, 0, 1);
+							// Copy rows to their new location.  Start at the bottom of the 
+							// scrollable region so we don't delete rows before we copy them.
 							for (int i = scrollRegionBottom - 1; i >= CursorPos.Row; --i)
 							{
 								lines[i].DeleteCharacters(0, lines[i].Length);
-								if (i - rows >= scrollRegionTop)
+								// Only copy rows if the "original" row is being affected by the
+								// insertion operation.
+								if (i - rows >= Math.Max(CursorPos.Row, scrollRegionTop))
 								{
 									foreach (var run in lines[i - rows].Runs)
 									{
@@ -693,6 +732,9 @@ namespace npcook.Terminal
 						break;
 
 					case 'M':
+						// DL: Delete x = 1 lines at the cursor, scrolling lines up from the bottom
+						//     of the scroll region WITHOUT moving the cursor.  The current line is
+						//     included in the delete.
 						{
 							int rows = getAtOrDefault(codes, 0, 1);
 							for (int i = CursorPos.Row; i < scrollRegionBottom; ++i)
@@ -710,26 +752,41 @@ namespace npcook.Terminal
 						break;
 
 					case 'P':
+						// DCH: Delete x = 1 characters starting at the cursor.
 						DeleteCharacters(getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'S':
+						// SU: Scroll up x = 1 lines, respecting the scroll regions.  All lines
+						//     that are more than x lines from the top are moved up x lines.  Rows
+						//     near the bottom are replaced with empty lines.
 						scroll(false, getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'T':
+						// SD: Scroll down x = 1 lines.  Similar to SU, except in the opposite 
+						//     direction.  Rows near the top are replaced with empty lines.
 						scroll(true, getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'X':
+						// ECH: Erase x = 1 characters, starting at and including the cursor.  Not
+						//      sure if this should wrap lines.  Cursor is moved accordingly.
 						EraseCharacters(getAtOrDefault(codes, 0, 1));
 						break;
 
 					case 'Z':
+						// CBT: Move the cursor back x = 1 tabstops.  Same as CHT, except reversed.
 						tab(true);
 						break;
+						
+					// UNIMPLEMENTED:
+					// REP: Repeat the character in the cell to the left of the cursor x = 1 
+					//      times to the right, moving the cursor accordingly.  Not sure if 
+					//      these are inserts or overwrites.
 
 					case 'd':
+						// VPA: Move cursor to the xth = 1 row without changing the column.
 						{
 							int row = getAtOrDefault(codes, 0, 1);
 							CursorPos = new Point(CursorPos.Col, row - 1);
@@ -737,6 +794,7 @@ namespace npcook.Terminal
 						break;
 
 					case 'e':
+						// VPR: Move the cursor down x = 1 rows without changing the column.
 						{
 							int rows = getAtOrDefault(codes, 0, 1);
 							CursorPos = new Point(CursorPos.Col, CursorPos.Row + rows);
@@ -744,21 +802,27 @@ namespace npcook.Terminal
 						break;
 
 					case 'm':
+						// SGR: Set attribute of next characters to be written.
 						handled = handleCsiSgr(codes);
 						break;
 
 					case 'r':
+						// DECSTBM: Set scroll region to start at row x = 1 and end at row
+						//          y = height.  Top is inclusive, bottom is exclusive.
+						//          Also, set cursor to the top-left corner?
 						scrollRegionTop = getAtOrDefault(codes, 0, 1) - 1;
 						scrollRegionBottom = getAtOrDefault(codes, 1, Size.Row);
 						CursorPos = new Point(0, 0);
 						break;
 
 					case 's':
+						// Save cursor position
 						savedCursorPos.Col = CursorPos.Col;
 						savedCursorPos.Row = CursorPos.Row;
 						break;
 
 					case 'u':
+						// Restore cursor position
 						CursorPos = new Point(savedCursorPos.Col, savedCursorPos.Row);
 						break;
 
