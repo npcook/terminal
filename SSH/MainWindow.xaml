@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:npcook.Ssh"
         xmlns:term="clr-namespace:npcook.Terminal.Controls;assembly=npcook.Terminal.Controls"
         mc:Ignorable="d"
-        Title="MainWindow" 
+        Title="{Binding Title}" 
         FocusManager.FocusedElement="{Binding ElementName=terminalControl}" 
         GotKeyboardFocus="OnKeyboardFocus" Height="309" Width="532">
     <Grid x:Name="root">
@@ -17,9 +17,19 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <ToolBar x:Name="toolBar" Grid.Row="0">
-            <Button Content="Connect" Height="22" VerticalAlignment="Top" Width="75" Click="connect_click"/>
-        </ToolBar>
+        <Menu x:Name="menu" Grid.Row="0">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New Session..." Command="{Binding NewSessionCommand}"/>
+                <MenuItem Header="_Reopen Session" Command="{Binding ReopenSessionCommand}"/>
+                <Separator/>
+                <MenuItem Header="_Transfer Files" Command="{Binding TransferFilesCommand}"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Command="{Binding ExitCommand}"/>
+            </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Options" Command="{Binding OptionsCommand}"/>
+            </MenuItem>
+        </Menu>
         <term:TerminalControl x:Name="terminalControl" FontFamily="Consolas" Focusable="True" FocusVisualStyle="{x:Null}" 
                               FontSize="13" Background="Black" Grid.Row="1" Width="Auto" Height="Auto" 
                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" SnapsToDevicePixels="True">

@@ -9,6 +9,18 @@ using System.Windows;
 
 namespace npcook.Ssh
 {
+	[Serializable]
+	public class ConnectException : Exception
+	{
+		public ConnectException() { }
+		public ConnectException(string message) : base(message) { }
+		public ConnectException(string message, Exception inner) : base(message, inner) { }
+		protected ConnectException(
+		  System.Runtime.Serialization.SerializationInfo info,
+		  System.Runtime.Serialization.StreamingContext context) : base(info, context)
+		{ }
+	}
+
 	/// <summary>
 	/// Interaction logic for App.xaml
 	/// </summary>
@@ -32,27 +44,76 @@ namespace npcook.Ssh
 			Shutdown(1);
 		}
 
-		private void this_Startup(object sender, StartupEventArgs e)
+		private async void this_Startup(object sender, StartupEventArgs e)
 		{
 			ShutdownMode = ShutdownMode.OnExplicitShutdown;
-			var dialog = new ConnectionDialog();
-			if (dialog.ShowDialog().GetValueOrDefault(false))
+			var connection = await AskForConnectionAsync();
+			if (connection != null)
 			{
-				var mainWindow = new MainWindow();
-				MainWindow = mainWindow;
-
-				var authList = new List<Authentication>();
-				if (dialog.Password != "")
-					authList.Add(new PasswordAuthentication(dialog.Password));
-				if (dialog.KeyFilePath != "")
-					authList.Add(new KeyAuthentication(File.Open(dialog.KeyFilePath, FileMode.Open), dialog.KeyFilePassphrase.ToString()));
-
-				mainWindow.Connect(dialog.Connection.Stream);
-				mainWindow.Show();
+				MainWindow = MakeWindowForConnection(connection);
 				ShutdownMode = ShutdownMode.OnLastWindowClose;
 			}
 			else
 				Shutdown();
+		}
+
+		internal async Task<Connection> AskForConnectionAsync()
+		{
+			using (var closedEvent = new System.Threading.ManualResetEvent(false))
+			{
+				var dialog = new ConnectionDialog();
+				dialog.Closed += (sender, e) =>
+				{
+					closedEvent.Set();
+				};
+				dialog.Show();
+
+				await Task.Run(new Action(() => closedEvent.WaitOne()));
+
+				if (dialog.Ok ?? false)
+					return dialog.Connection;
+				else
+					return null;
+			}
+		}
+
+		internal Window MakeWindowForConnection(Connection connection)
+		{
+			var window = new MainWindow();
+			window.Connect(connection.Stream, connection.Settings);
+			window.Show();
+			return window;
+		}
+
+		internal async Task<Connection> MakeConnectionAsync(ConnectionSettings settings, int terminalCols, int terminalRows)
+		{
+			using (var doneEvent = new System.Threading.ManualResetEvent(false))
+			{
+				var connection = new Connection();
+				string error = null;
+				connection.Connected += (_sender, _e) =>
+				{
+					Dispatcher.Invoke(() =>
+					{
+						doneEvent.Set();
+					});
+				};
+				connection.Failed += (_sender, _e) =>
+				{
+					Dispatcher.Invoke(() =>
+					{
+						error = _e.Message;
+						doneEvent.Set();
+					});
+				};
+
+				connection.Connect(settings, App.DefaultTerminalCols, App.DefaultTerminalRows);
+
+				await Task.Run(new Action(() => doneEvent.WaitOne()));
+				if (error != null)
+					throw new ConnectException(error);
+				return connection;
+			}
 		}
 	}
 }
