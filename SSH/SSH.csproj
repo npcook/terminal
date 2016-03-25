@@ -117,7 +117,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="FileListView.cs" />
     <Compile Include="RelayCommand.cs" />
+    <Compile Include="Util.cs" />
     <Page Include="ConnectionDialog.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

@@ -18,12 +18,27 @@ using System.Collections.ObjectModel;
 
 namespace npcook.Ssh
 {
-	class LocalFile
+	class CommonFile
 	{
 		public string Name
 		{ get; set; }
 
+		public string Size
+		{ get; set; }
+
+		public bool IsDirectory
+		{ get; set; }
+	}
+
+	class LocalFile : CommonFile
+	{
 		public string Path
+		{ get; set; }
+	}
+
+	class RemoteFile : CommonFile
+	{
+		public SftpFile File
 		{ get; set; }
 	}
 
@@ -33,9 +48,9 @@ namespace npcook.Ssh
 	public partial class FileWindow : Window
 	{
 		SftpClient client;
-		string localPath;
+		string localDir;
 		ObservableCollection<LocalFile> localFiles = new ObservableCollection<LocalFile>();
-		ObservableCollection<SftpFile> remoteFiles = new ObservableCollection<SftpFile>();
+		ObservableCollection<RemoteFile> remoteFiles = new ObservableCollection<RemoteFile>();
 		FileSystemWatcher watcher;
 
 		public FileWindow()
@@ -57,7 +72,6 @@ namespace npcook.Ssh
 
 		private void Watcher_Created(object sender, FileSystemEventArgs e)
 		{
-			throw new NotImplementedException();
 		}
 
 		class DirectoryComparer : IComparer<bool>
@@ -82,12 +96,40 @@ namespace npcook.Ssh
 
 		private void changeLocalDirectory(string newPath)
 		{
-			localPath = newPath;
-			foreach (var filename in Directory.GetFiles(localPath))
-				localFiles.Add(new LocalFile { Name = System.IO.Path.GetFileName(filename), Path = filename });
+			localFiles.Clear();
 
-			watcher.Path = localPath;
+			localDir = newPath;
+			var files =
+				Directory.EnumerateFileSystemEntries(localDir)
+				.Select(path =>
+				{
+					FileSystemInfo info = new FileInfo(path);
+					return new { path, info };
+				})
+				.Where(file => (file.info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+				.Select(file =>
+				{
+					var localFile = new LocalFile()
+					{
+						Name = System.IO.Path.GetFileName(file.path),
+						Path = file.path,
+						IsDirectory = (file.info.Attributes & FileAttributes.Directory) != 0,
+						Size = "",
+					};
+					if (!localFile.IsDirectory)
+						localFile.Size = getSizeString((file.info as FileInfo).Length);
+					return localFile;
+				})
+				.OrderBy(file => file.IsDirectory, new DirectoryComparer())
+				.ThenBy(file => file.Name);
+
+			foreach (var file in files)
+				localFiles.Add(file);
+
+			watcher.Path = localDir;
 			watcher.EnableRaisingEvents = true;
+
+			localPathText.Text = localDir;
 		}
 
 		private void changeRemoteDirectory(string newPath)
@@ -96,81 +138,64 @@ namespace npcook.Ssh
 				client.ChangeDirectory(newPath);
 			remoteFiles.Clear();
 
-			var directories =
+			var files =
 				client
 				.ListDirectory(client.WorkingDirectory)
 				.Where(file => !file.Name.StartsWith(".") || file.Name == "..")
+				.Select(file =>
+				{
+					var remoteFile = new RemoteFile()
+					{
+						File = file,
+						Name = file.Name,
+						IsDirectory = file.IsDirectory,
+						Size = "",
+					};
+					if (!remoteFile.IsDirectory)
+						remoteFile.Size = getSizeString(file.Attributes.Size);
+					return remoteFile;
+				})
 				.OrderBy(file => file.IsDirectory, new DirectoryComparer())
 				.ThenBy(file => file.Name);
 
-			foreach (var file in directories)
+			foreach (var file in files)
 				remoteFiles.Add(file);
+
+			remotePathText.Text = client.WorkingDirectory;
+		}
+
+		string getSizeString(long size)
+		{
+			string[] units = new[] { "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB" };
+			int index = 0;
+			while (size > 1024 && index < units.Length - 1)
+			{
+				size /= 1024;
+				index++;
+			}
+			return $"{size} {units[index]}";
 		}
 
 		private void localFilesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
 		{
+			var item = localFiles[localFilesList.SelectedIndex];
+			if (item == null)
+				return;
+			if (item.IsDirectory)
+				changeLocalDirectory(item.Path);
+			else
+				uploadFile(item.Path);
 		}
 
 		private void remoteFilesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
 		{
-			var item = remoteFilesList.SelectedItem as SftpFile;
-			if (item != null && item.IsDirectory)
-			{
-				changeRemoteDirectory(item.FullName);
-			}
-		}
-
-		bool dragging = false;
-		Point dragStart;
-		LocalFile dragFile;
-		private void localFilesList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-		{
-			dragging = true;
-			dragStart = e.GetPosition(localFilesList);
-			var itemContainer = FindAncestor<ListViewItem>(VisualTreeHelper.HitTest(localFilesList, dragStart).VisualHit);
-			dragFile = localFilesList.ItemContainerGenerator.ItemFromContainer(itemContainer) as LocalFile;
-			Mouse.Capture(localFilesList);
-
-			e.Handled = false;
-		}
-
-		static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
-		{
-			do
-			{
-				if (current is T)
-					return (T) current;
-				current = VisualTreeHelper.GetParent(current);
-			} while (current != null);
-			return null;
-		}
-
-		private void localFilesList_PreviewMouseMove(object sender, MouseEventArgs e)
-		{
-			if (!dragging)
+			var item = remoteFiles[remoteFilesList.SelectedIndex];
+			if (item == null)
 				return;
-			var diff = dragStart - e.GetPosition(localFilesList);
-			if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance || Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance)
-				return;
-
-			var dropList = new System.Collections.Specialized.StringCollection();
-			dropList.Add(dragFile.Path);
-
-			var data = new DataObject();
-			data.SetFileDropList(dropList);
-
-			DragDrop.DoDragDrop(localFilesList, data, DragDropEffects.Copy);
-
-			e.Handled = false;
-		}
-
-		private void localFilesList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-		{
-			if (dragging)
-			{
-				dragging = false;
-				Mouse.Capture(null);
-			}
+			if (item.IsDirectory)
+				changeRemoteDirectory(item.File.FullName);
+			else
+				downloadFile(item.File.FullName);
 		}
 
 		private void remoteFilesList_DragEnter(object sender, DragEventArgs e)
@@ -198,6 +223,39 @@ namespace npcook.Ssh
 			using (var stream = File.OpenRead(localPath))
 			{
 				client.UploadFile(stream, remotePath);
+				changeRemoteDirectory(client.WorkingDirectory);
+			}
+		}
+
+		void downloadFile(string remotePath)
+		{
+			string filenameBase = System.IO.Path.GetFileNameWithoutExtension(remotePath);
+			string extension = System.IO.Path.GetExtension(remotePath);
+			string localPath = System.IO.Path.Combine(localDir, filenameBase + extension);
+			int uniqueIndex = 1;
+			while (File.Exists(localPath))
+			{
+				localPath = System.IO.Path.Combine(localDir, $"{filenameBase} ({uniqueIndex}){extension}");
+				uniqueIndex++;
+			}
+
+			using (var stream = File.Open(localPath, FileMode.CreateNew))
+			{
+				client.DownloadFile(remotePath, stream);
+				changeLocalDirectory(localDir);
+			}
+		}
+
+		private void LocalUp_Click(object sender, RoutedEventArgs e)
+		{
+			try
+			{
+				var currentInfo = new DirectoryInfo(localDir);
+				changeLocalDirectory(currentInfo.Parent.FullName);
+			}
+			catch (IOException)
+			{
+				throw;
 			}
 		}
 	}

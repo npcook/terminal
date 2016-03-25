@@ -5,24 +5,48 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:npcook.Ssh"
         mc:Ignorable="d"
-        Title="FileWindow" Height="308.451" Width="461.408">
+        Title="FileWindow" Width="700" Height="500">
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="0.5*"/>
             <ColumnDefinition Width="0.5*"/>
         </Grid.ColumnDefinitions>
-        <ListView x:Name="localFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10,10,10,10" MouseDoubleClick="localFilesList_MouseDoubleClick" PreviewMouseLeftButtonDown="localFilesList_PreviewMouseLeftButtonDown" PreviewMouseMove="localFilesList_PreviewMouseMove" PreviewMouseLeftButtonUp="localFilesList_PreviewMouseLeftButtonUp" Grid.Column="0">
-            <ListView.View>
+        <TextBlock Text="Local" FontWeight="Bold" HorizontalAlignment="Center" Margin="10,10,10,5" 
+                   Grid.Column="0" Grid.Row="0"/>
+        <TextBox x:Name="localPathText" Margin="10,5,10,5" Grid.Column="0" Grid.Row="1"/>
+        <ToolBar Grid.Column="0" Grid.Row="2">
+            <Button Content="Up" Click="LocalUp_Click"></Button>
+        </ToolBar>
+        <local:FileListView x:Name="localFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
+                  Margin="10,5,10,10" MouseDoubleClick="localFilesList_MouseDoubleClick" Grid.Column="0" Grid.Row="3">
+            <local:FileListView.View>
                 <GridView>
                     <GridViewColumn Header="Filename" DisplayMemberBinding="{Binding Name}"/>
+                    <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}"/>
+                    <GridViewColumn Header="Directory" DisplayMemberBinding="{Binding IsDirectory}"/>
                 </GridView>
-            </ListView.View>
-        </ListView>
-        <ListView x:Name="remoteFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10,10,10,10" MouseDoubleClick="remoteFilesList_MouseDoubleClick" AllowDrop="True" Drop="remoteFilesList_Drop" DragEnter="remoteFilesList_DragEnter" Grid.Column="1">
+            </local:FileListView.View>
+        </local:FileListView>
+        <TextBlock Text="Remote" FontWeight="Bold" HorizontalAlignment="Center" Margin="10,10,10,5" 
+                   Grid.Column="1" Grid.Row="0"/>
+        <TextBox x:Name="remotePathText" Margin="10,5,10,5" Grid.Column="1" Grid.Row="1"/>
+        <ToolBar Grid.Column="1" Grid.Row="2">
+            
+        </ToolBar>
+        <ListView x:Name="remoteFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
+                  Margin="10,5,10,10" MouseDoubleClick="remoteFilesList_MouseDoubleClick" AllowDrop="True" 
+                  Drop="remoteFilesList_Drop" DragEnter="remoteFilesList_DragEnter" 
+                  Grid.Column="1" Grid.Row="3">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Filename" DisplayMemberBinding="{Binding Name}"/>
-                    <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Attributes.Size}"/>
+                    <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}"/>
                     <GridViewColumn Header="Directory" DisplayMemberBinding="{Binding IsDirectory}"/>
                 </GridView>
             </ListView.View>
