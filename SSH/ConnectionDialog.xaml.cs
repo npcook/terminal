@@ -22,7 +22,7 @@ using System.Xml.XPath;
 
 namespace npcook.Ssh
 {
-	public struct ConnectionSettings
+	public class ConnectionSettings
 	{
 		public string ServerAddress
 		{ get; set; }
@@ -97,6 +97,9 @@ namespace npcook.Ssh
 		public Connection Connection
 		{ get; private set; }
 
+		public bool? Ok
+		{ get; private set; }
+
 		public ConnectionDialog()
 		{
 			DataContext = this;
@@ -157,7 +160,7 @@ namespace npcook.Ssh
 		{
 			base.OnClosed(e);
 
-			if (DialogResult.GetValueOrDefault(false))
+			if (Ok ?? false)
 			{
 				var store = IsolatedStorageFile.GetUserStoreForAssembly();
 				try
@@ -209,7 +212,7 @@ namespace npcook.Ssh
 
 		private void close_Click(object sender, RoutedEventArgs e)
 		{
-			DialogResult = false;
+			Ok = false;
 			Close();
 		}
 
@@ -218,41 +221,28 @@ namespace npcook.Ssh
 			MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Error);
 		}
 
-		void connect_Click(object sender, RoutedEventArgs e)
+		async void connect_Click(object sender, RoutedEventArgs e)
 		{
 			IsEnabled = false;
 
-			Connection = new Connection();
-			Connection.Connected += (_sender, _e) =>
+			try
 			{
-				Dispatcher.Invoke(() =>
-				{
-					DialogResult = true;
-					Close();
-				});
-			};
-			Connection.Failed += (_sender, _e) =>
+				Connection = await App.Current.MakeConnectionAsync(SelectedSettings, App.DefaultTerminalCols, App.DefaultTerminalRows);
+				Ok = true;
+				Close();
+			}
+			catch (ConnectException ex)
 			{
-				Dispatcher.Invoke(() =>
-				{
-					Connection = null;
-					IsEnabled = true;
-					displayError(_e.Message, "Could not connect");
-				});
-			};
-
-			var authList = new List<Authentication>();
-			if (KeyFilePath != "")
-				authList.Add(new KeyAuthentication(File.Open(KeyFilePath, FileMode.Open), KeyFilePassphrase));
-			authList.Add(new PasswordAuthentication(Password));
-			Connection.Connect(ServerAddress, ServerPort, Username, authList, App.DefaultTerminalCols, App.DefaultTerminalRows);
+				IsEnabled = true;
+				displayError(ex.Message, "Could not connect");
+			}
 		}
 
 		private void settingsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
 		{
 			if (e.AddedItems.Count > 0)
 			{
-				var settings = (e.AddedItems[0] as ConnectionSettings?).Value;	// Let an exception happen if the items are not ConnectionSettings
+				var settings = e.AddedItems[0] as ConnectionSettings;	// Let an exception happen if the items are not ConnectionSettings
 				serverAddress.Text = settings.ServerAddress;
 				serverPort.Text = settings.ServerPort.ToString();
 				username.Text = settings.Username;
@@ -275,7 +265,7 @@ namespace npcook.Ssh
 
 		private void settingsListItem_Delete(object sender, RoutedEventArgs e)
 		{
-			SavedSettings.Remove(((sender as MenuItem).Tag as ConnectionSettings?).Value);
+			SavedSettings.Remove((sender as MenuItem).Tag as ConnectionSettings);
 		}
 	}
 }

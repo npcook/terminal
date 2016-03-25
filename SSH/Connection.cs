@@ -41,14 +41,18 @@ namespace npcook.Ssh
 		public ShellStream Stream
 		{ get; private set; }
 
+		public ConnectionSettings Settings
+		{ get; private set; }
+
 		public event EventHandler Connected;
 		public event EventHandler<ConnectionFailedEventArgs> Failed;
 
 		public Connection()
 		{ }
 
-		public void Connect(string serverAddress, int serverPort, string username, IEnumerable<Authentication> authentications, int terminalCols, int terminalRows)
+		public void Connect(ConnectionSettings settings, int terminalCols, int terminalRows)
 		{
+			Settings = settings;
 			if (dataThread != null)
 				throw new InvalidOperationException("Already connecting to a server.");
 			dataThread = new Thread(() =>
@@ -59,18 +63,14 @@ namespace npcook.Ssh
 #else
 				try
 				{
-					ConnectionInfo connectionInfo = new ConnectionInfo(serverAddress, serverPort, username, authentications.Select(auth =>
+					var authentications = new List<AuthenticationMethod>();
+					if (!string.IsNullOrEmpty(settings.KeyFilePath))
 					{
-						if (auth is PasswordAuthentication)
-							return new PasswordAuthenticationMethod(username, (auth as PasswordAuthentication).Password) as AuthenticationMethod;
-						else if (auth is KeyAuthentication)
-						{
-							var privateKeyFile = new PrivateKeyFile((auth as KeyAuthentication).Key, (auth as KeyAuthentication).Passphrase);
-							return new PrivateKeyAuthenticationMethod(username, privateKeyFile) as AuthenticationMethod;
-						}
-						else
-							throw new NotImplementedException("Unknown type of authentication given to Connect");
-					}).ToArray());
+						var privateKeyFile = new PrivateKeyFile(settings.KeyFilePath, settings.KeyFilePassphrase);
+						authentications.Add(new PrivateKeyAuthenticationMethod(settings.Username, privateKeyFile));
+					}
+					authentications.Add(new PasswordAuthenticationMethod(settings.Username, settings.Password));
+					ConnectionInfo connectionInfo = new ConnectionInfo(settings.ServerAddress, settings.ServerPort, settings.Username, authentications.ToArray());
 
 					Client = new SshClient(connectionInfo);
 					Client.Connect();
