@@ -6,6 +6,16 @@
         xmlns:local="clr-namespace:npcook.Ssh"
         mc:Ignorable="d"
         Title="FileWindow" Width="700" Height="500">
+    <Window.Resources>
+        <ResourceDictionary>
+            <DataTemplate x:Key="nameAndIconTemplate">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="{Binding Icon}" Margin="0,0,2.5,0"/>
+                    <TextBlock Text="{Binding Name}"/>
+                </StackPanel>
+            </DataTemplate>
+        </ResourceDictionary>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -20,14 +30,14 @@
         <TextBlock Text="Local" FontWeight="Bold" HorizontalAlignment="Center" Margin="10,10,10,5" 
                    Grid.Column="0" Grid.Row="0"/>
         <TextBox x:Name="localPathText" Margin="10,5,10,5" Grid.Column="0" Grid.Row="1"/>
-        <ToolBar Grid.Column="0" Grid.Row="2">
-            <Button Content="Up" Click="LocalUp_Click"></Button>
-        </ToolBar>
+        <StackPanel Orientation="Horizontal" Margin="10,5,10,5" Grid.Column="0" Grid.Row="2">
+            <Button Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Content="Up" Click="LocalUp_Click"></Button>
+        </StackPanel>
         <local:FileListView x:Name="localFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
                   Margin="10,5,10,10" MouseDoubleClick="localFilesList_MouseDoubleClick" Grid.Column="0" Grid.Row="3">
             <local:FileListView.View>
                 <GridView>
-                    <GridViewColumn Header="Filename" DisplayMemberBinding="{Binding Name}"/>
+                    <GridViewColumn Header="Filename" CellTemplate="{StaticResource nameAndIconTemplate}"/>
                     <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}"/>
                     <GridViewColumn Header="Directory" DisplayMemberBinding="{Binding IsDirectory}"/>
                 </GridView>
@@ -36,16 +46,16 @@
         <TextBlock Text="Remote" FontWeight="Bold" HorizontalAlignment="Center" Margin="10,10,10,5" 
                    Grid.Column="1" Grid.Row="0"/>
         <TextBox x:Name="remotePathText" Margin="10,5,10,5" Grid.Column="1" Grid.Row="1"/>
-        <ToolBar Grid.Column="1" Grid.Row="2">
-            
-        </ToolBar>
+        <StackPanel Orientation="Horizontal" Margin="10,5,10,5" Grid.Column="1" Grid.Row="2">
+            <Button Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Content="Up" Click="RemoteUp_Click"></Button>
+        </StackPanel>
         <ListView x:Name="remoteFilesList" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
                   Margin="10,5,10,10" MouseDoubleClick="remoteFilesList_MouseDoubleClick" AllowDrop="True" 
                   Drop="remoteFilesList_Drop" DragEnter="remoteFilesList_DragEnter" 
                   Grid.Column="1" Grid.Row="3">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Filename" DisplayMemberBinding="{Binding Name}"/>
+                    <GridViewColumn Header="Filename" CellTemplate="{StaticResource nameAndIconTemplate}"/>
                     <GridViewColumn Header="Size" DisplayMemberBinding="{Binding Size}"/>
                     <GridViewColumn Header="Directory" DisplayMemberBinding="{Binding IsDirectory}"/>
                 </GridView>

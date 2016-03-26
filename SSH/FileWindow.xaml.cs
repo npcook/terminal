@@ -15,6 +15,7 @@ using Renci.SshNet;
 using Renci.SshNet.Sftp;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 
 namespace npcook.Ssh
 {
@@ -27,6 +28,9 @@ namespace npcook.Ssh
 		{ get; set; }
 
 		public bool IsDirectory
+		{ get; set; }
+
+		public ImageSource Icon
 		{ get; set; }
 	}
 
@@ -51,6 +55,8 @@ namespace npcook.Ssh
 		string localDir;
 		ObservableCollection<LocalFile> localFiles = new ObservableCollection<LocalFile>();
 		ObservableCollection<RemoteFile> remoteFiles = new ObservableCollection<RemoteFile>();
+
+		Dictionary<string, int> localFileMap = new Dictionary<string, int>();
 		FileSystemWatcher watcher;
 
 		public FileWindow()
@@ -68,10 +74,113 @@ namespace npcook.Ssh
 			};
 
 			watcher.Created += Watcher_Created;
+			watcher.Renamed += Watcher_Renamed;
+			watcher.Deleted += Watcher_Deleted;
 		}
 
 		private void Watcher_Created(object sender, FileSystemEventArgs e)
 		{
+			Dispatcher.BeginInvoke(new Action(() =>
+			{
+				var fileInfo = new FileInfo(e.FullPath);
+				var localFile = makeLocalFile(fileInfo);
+				localFiles.Add(localFile);
+				localFileMap.Add(e.Name, localFiles.Count - 1);
+			}));
+		}
+
+		private void Watcher_Renamed(object sender, RenamedEventArgs e)
+		{
+			Dispatcher.BeginInvoke(new Action(() =>
+			{
+				var fileInfo = new FileInfo(e.FullPath);
+				int index = localFileMap[e.OldName];
+				localFiles[index] = makeLocalFile(fileInfo);
+				localFileMap.Remove(e.OldName);
+				localFileMap.Add(e.Name, index);
+			}));
+		}
+
+		private void Watcher_Deleted(object sender, FileSystemEventArgs e)
+		{
+			Dispatcher.BeginInvoke(new Action(() =>
+			{
+				int index = localFileMap[e.Name];
+				localFiles.RemoveAt(index);
+				localFileMap.Remove(e.Name);
+			}));
+		}
+
+		LocalFile makeLocalFile(FileSystemInfo info)
+		{
+			var localFile = new LocalFile()
+			{
+				Name = info.Name,
+				Path = info.FullName,
+				IsDirectory = (info.Attributes & FileAttributes.Directory) != 0,
+				Size = "",
+			};
+			if (!localFile.IsDirectory)
+				localFile.Size = getSizeString((info as FileInfo).Length);
+
+			localFile.Icon = getIconForFile(info.FullName);
+
+			return localFile;
+		}
+
+		ImageSource getIconForFile(string filename)
+		{
+			return getIconInternal(filename, NativeMethods.SHGFI.ICON | NativeMethods.SHGFI.SMALLICON);
+		}
+
+		ImageSource getIconForExtension(string extension)
+		{
+			if (extension != "")
+				return getIconInternal(extension, NativeMethods.SHGFI.ICON | NativeMethods.SHGFI.SMALLICON | NativeMethods.SHGFI.USEFILEATTRIBUTES);
+			else
+				return getStockIcon(NativeMethods.SIID.SIID_DOCNOASSOC, NativeMethods.SHGSI.ICON | NativeMethods.SHGSI.SMALLICON);
+		}
+
+		ImageSource getIconForDirectory()
+		{
+			return getStockIcon(NativeMethods.SIID.FOLDER, NativeMethods.SHGSI.ICON | NativeMethods.SHGSI.SMALLICON);
+		}
+
+		ImageSource getIconInternal(string filename, NativeMethods.SHGFI flags, bool directory = false)
+		{
+			var shellInfo = new NativeMethods.SHFILEINFO();
+			uint size = (uint) Marshal.SizeOf(shellInfo);
+			uint attributes = directory ? NativeMethods.FILE_ATTRIBUTE_DIRECTORY : NativeMethods.FILE_ATTRIBUTE_NORMAL;
+			if (NativeMethods.SHGetFileInfo(filename, attributes, ref shellInfo, size, flags) != IntPtr.Zero)
+			{
+				try
+				{
+					return System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(shellInfo.hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+				}
+				finally
+				{
+					NativeMethods.DestroyIcon(shellInfo.hIcon);
+				}
+			}
+			return null;
+		}
+
+		ImageSource getStockIcon(NativeMethods.SIID stockId, NativeMethods.SHGSI flags)
+		{
+			var shellInfo = new NativeMethods.SHSTOCKICONINFO();
+			shellInfo.cbSize = (uint) Marshal.SizeOf(shellInfo);
+			if (NativeMethods.SHGetStockIconInfo(stockId, flags, ref shellInfo) == 0)
+			{
+				try
+				{
+					return System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(shellInfo.hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+				}
+				finally
+				{
+					NativeMethods.DestroyIcon(shellInfo.hIcon);
+				}
+			}
+			return null;
 		}
 
 		class DirectoryComparer : IComparer<bool>
@@ -97,6 +206,7 @@ namespace npcook.Ssh
 		private void changeLocalDirectory(string newPath)
 		{
 			localFiles.Clear();
+			localFileMap.Clear();
 
 			localDir = newPath;
 			var files =
@@ -104,27 +214,20 @@ namespace npcook.Ssh
 				.Select(path =>
 				{
 					FileSystemInfo info = new FileInfo(path);
-					return new { path, info };
+					return info;
 				})
-				.Where(file => (file.info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
-				.Select(file =>
-				{
-					var localFile = new LocalFile()
-					{
-						Name = System.IO.Path.GetFileName(file.path),
-						Path = file.path,
-						IsDirectory = (file.info.Attributes & FileAttributes.Directory) != 0,
-						Size = "",
-					};
-					if (!localFile.IsDirectory)
-						localFile.Size = getSizeString((file.info as FileInfo).Length);
-					return localFile;
-				})
+				.Where(info => (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+				.Select(info => makeLocalFile(info))
 				.OrderBy(file => file.IsDirectory, new DirectoryComparer())
 				.ThenBy(file => file.Name);
-
-			foreach (var file in files)
+			
+			foreach (var tuple in files.Enumerate())
+			{
+				int index = tuple.Item1;
+				var file = tuple.Item2;
 				localFiles.Add(file);
+				localFileMap.Add(file.Name, index);
+			}
 
 			watcher.Path = localDir;
 			watcher.EnableRaisingEvents = true;
@@ -141,7 +244,7 @@ namespace npcook.Ssh
 			var files =
 				client
 				.ListDirectory(client.WorkingDirectory)
-				.Where(file => !file.Name.StartsWith(".") || file.Name == "..")
+				.Where(file => !file.Name.StartsWith("."))
 				.Select(file =>
 				{
 					var remoteFile = new RemoteFile()
@@ -152,7 +255,13 @@ namespace npcook.Ssh
 						Size = "",
 					};
 					if (!remoteFile.IsDirectory)
+					{
 						remoteFile.Size = getSizeString(file.Attributes.Size);
+						remoteFile.Icon = getIconForExtension(System.IO.Path.GetExtension(file.Name));
+					}
+					else
+						remoteFile.Icon = getIconForDirectory();
+
 					return remoteFile;
 				})
 				.OrderBy(file => file.IsDirectory, new DirectoryComparer())
@@ -239,6 +348,7 @@ namespace npcook.Ssh
 				uniqueIndex++;
 			}
 
+			watcher.EnableRaisingEvents = false;
 			using (var stream = File.Open(localPath, FileMode.CreateNew))
 			{
 				client.DownloadFile(remotePath, stream);
@@ -253,6 +363,18 @@ namespace npcook.Ssh
 				var currentInfo = new DirectoryInfo(localDir);
 				changeLocalDirectory(currentInfo.Parent.FullName);
 			}
+			catch (IOException)
+			{
+				throw;
+			}
+		}
+
+		private void RemoteUp_Click(object sender, RoutedEventArgs e)
+		{
+			try
+			{
+				changeRemoteDirectory($"{client.WorkingDirectory}/..");
+            }
 			catch (IOException)
 			{
 				throw;

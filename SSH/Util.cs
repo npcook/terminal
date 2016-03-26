@@ -10,6 +10,16 @@ namespace npcook.Ssh
 {
 	static class Util
 	{
+		public static IEnumerable<Tuple<int, T>> Enumerate<T>(this IEnumerable<T> source)
+		{
+			int index = 0;
+			foreach (T item in source)
+			{
+				yield return Tuple.Create(index, item);
+				index++;
+			}
+		}
+
 		public static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
 		{
 			do
