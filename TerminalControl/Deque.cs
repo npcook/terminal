@@ -188,7 +188,7 @@ namespace npcook.Terminal.Controls
 				PushBack(value);
 				return;
 			}
-			bool contiguous = end > actualIndex && end != backing.Length - 1;
+			bool contiguous = end > actualIndex;
 			if (contiguous)
 			{
 				Array.Copy(backing, actualIndex, backing, actualIndex + 1, end - actualIndex);
