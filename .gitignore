@@ -193,3 +193,4 @@ ModelManifest.xml
 libsshnet/lib
 
 *.opendb
+/SSH.VC.db

@@ -169,8 +169,7 @@ namespace npcook.Terminal
 					CursorPos = CursorPos;
 				}
 
-				if (SizeChanged != null)
-					SizeChanged(this, new SizeChangedEventArgs(oldCursorPos));
+				SizeChanged?.Invoke(this, new SizeChangedEventArgs(oldCursorPos));
 			}
 		}
 
@@ -232,8 +231,7 @@ namespace npcook.Terminal
 			else
 				currentBuffer = screenBuffer;
 
-			if (ScreenChanged != null)
-				ScreenChanged(this, EventArgs.Empty);
+			ScreenChanged?.Invoke(this, EventArgs.Empty);
 		}
 
 		void advanceCursorRow()
@@ -248,8 +246,7 @@ namespace npcook.Terminal
 				Array.Copy(lines, 1, lines, 0, lines.Length - 1);
 				lines[lines.Length - 1] = newLine;
 
-				if (LinesMoved != null)
-					LinesMoved(this, new LinesMovedEventArgs(1, 0, Size.Row - 1));
+				LinesMoved?.Invoke(this, new LinesMovedEventArgs(1, 0, Size.Row - 1));
 			}
 		}
 
@@ -266,8 +263,7 @@ namespace npcook.Terminal
 			for (int i = 0; i < addedCount; ++i)
 				lines[addIndex + i] = new TerminalLine();
 
-			if (LinesMoved != null)
-				LinesMoved(this, new LinesMovedEventArgs(index, newIndex, count));
+			LinesMoved?.Invoke(this, new LinesMovedEventArgs(index, newIndex, count));
 		}
 
 		public void InsertCharacters(string text, TerminalFont font)
