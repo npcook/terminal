@@ -29,6 +29,7 @@ namespace npcook.Ssh
 	public partial class MainWindow : Window
 	{
 		MainWindowViewModel viewModel;
+		IWindowStreamNotifier notifier;
 
 		bool initialSized = false;
 		public MainWindow()
@@ -53,11 +54,21 @@ namespace npcook.Ssh
 
 		public void Connect(ShellStream stream, ConnectionSettings settings)
 		{
-			var notifier = new ShellStreamNotifier(terminalControl, stream);
-			viewModel.Connect(notifier, settings);
+			notifier?.Stop();
+			notifier = new ShellStreamNotifier(terminalControl, stream);
+			//notifier = new LoadingShellStreamNotifier(terminalControl, File.OpenRead("input.log"));
+			//notifier = new SavingShellStreamNotifier(terminalControl, stream, File.OpenWrite("input.log"));
+			viewModel.Connect(notifier, stream, settings);
 			notifier.Start();
 
 			terminalControl.Terminal = viewModel.Terminal;
+		}
+
+		protected override void OnClosed(EventArgs e)
+		{
+			base.OnClosed(e);
+
+			notifier?.Stop();
 		}
 
 		private void this_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)

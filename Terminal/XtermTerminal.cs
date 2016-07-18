@@ -119,7 +119,7 @@ namespace npcook.Terminal
 			notifier.DataAvailable += Notifier_DataAvailable;
 		}
 
-		private void Notifier_DataAvailable(object sender, EventArgs e)
+		private void Notifier_DataAvailable(object sender, DataAvailableEventArgs e)
 		{
 			try
 			{
@@ -130,10 +130,8 @@ namespace npcook.Terminal
 			}
 			catch (Exception ex)
 			{
-				if (System.Diagnostics.Debugger.IsAttached) {
-					System.Diagnostics.Debugger.Break();
-				}
-				System.Diagnostics.Debug.WriteLine(ex);
+				System.Diagnostics.Debug.WriteLine(ex.ToString());
+				throw;
 			}
         }
 
@@ -155,7 +153,10 @@ namespace npcook.Terminal
 
 		void readChar()
 		{
-			char c = (char) reader.Read();
+			int b = reader.Read();
+			if (b == -1)
+				return;
+			char c = (char) b;
 			switch (state)
 			{
 				case State.Text:
@@ -842,7 +843,12 @@ namespace npcook.Terminal
 			int separatorIndex = sequence.IndexOf(';');
 			if (separatorIndex == -1)
 				separatorIndex = sequence.Length;
-			int kind = int.Parse(sequence.Substring(0, separatorIndex));
+			int kind;
+			if (!int.TryParse(sequence.Substring(0, separatorIndex), out kind))
+			{
+				System.Diagnostics.Debug.WriteLine($"Invalid OSC kind.  Sequence: {sequence}");
+				return false;
+			}
 			switch (kind)
 			{
 				case 0:

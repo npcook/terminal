@@ -208,6 +208,21 @@ namespace npcook.Terminal.Controls
 				callback();
 		}
 
+		public void CycleChange()
+		{
+			IEnumerable<Action> callbacks = Enumerable.Empty<Action>();
+			lock (deferChangesLock)
+			{
+				if (DeferChanges)
+				{
+					callbacks = deferChangesCallbacks.Values.ToArray();
+					deferChangesCallbacks.Clear();
+				}
+			}
+			foreach (var callback in callbacks)
+				callback();
+		}
+
 		// Register a delegate to be called when changes should be applied.  If the same callee
 		// is passed multiple times, the last callback overwrites the previous callbacks
 		public void AddDeferChangesCallback(object callee, Action callback)
@@ -901,7 +916,7 @@ namespace npcook.Terminal.Controls
 
 		internal SolidColorBrush GetFontForegroundBrush(TerminalFont font)
 		{
-			var color = font.Foreground;
+			var color = !font.Inverse ? font.Foreground : font.Background;
 			if (font.Bold)
 				return GetBrush(TerminalColors.MakeBold(color));
 			else
@@ -910,7 +925,7 @@ namespace npcook.Terminal.Controls
 
 		internal SolidColorBrush GetFontBackgroundBrush(TerminalFont font)
 		{
-			var color = font.Background;
+			var color = !font.Inverse ? font.Background : font.Foreground;
 			return GetBrush(color);
 		}
 

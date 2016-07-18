@@ -278,6 +278,11 @@ namespace npcook.Terminal.Controls
 			impl.EndChange();
 		}
 
+		public void CycleChange()
+		{
+			impl.CycleChange();
+		}
+
 		public void AddMessage(string text, TerminalFont font)
 		{
 			impl.AddMessage(text, font);
